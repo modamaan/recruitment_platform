@@ -1,0 +1,41 @@
+{
+  "name": "recruitment-platform-backend",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "nodemon src/index.ts",
+    "agent": "tsx --tsconfig tsconfig.agent.json src/agent.ts dev",
+    "start": "concurrently --names \"API,AGENT\" --prefix-colors \"cyan,magenta\" \"npm run dev\" \"npm run agent\"",
+    "build": "tsc",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push"
+  },
+  "dependencies": {
+    "@livekit/agents": "^1.9.1",
+    "@livekit/agents-plugin-openai": "^1.9.1",
+    "@livekit/agents-plugin-silero": "^1.9.1",
+    "@neondatabase/serverless": "^1.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.45.4",
+    "express": "^4.19.2",
+    "jose": "^5.2.4",
+    "livekit-server-sdk": "^2.19.1",
+    "multer": "^2.4.0",
+    "nodemon": "^3.1.14",
+    "openai": "^7.31.0",
+    "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^2.3.0",
+    "@types/node": "^20.12.7",
+    "@types/pdf-parse": "^1.1.5",
+    "concurrently": "^10.0.6",
+    "drizzle-kit": "^0.31.11",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.4.5"
+  }
+}
