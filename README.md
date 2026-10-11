@@ -12,6 +12,44 @@
 
 ---
 
+## 💡 What is CampusHire? (The Idea in Simple Words)
+
+**CampusHire AI** is a smart campus placement and recruitment platform designed for universities and hiring companies. It replaces slow, chaotic, and paper-heavy college placement drives with an **end-to-end verified, AI-driven hiring pipeline**.
+
+Think of it as having a **University Placement Dean** and a **Senior Technical Recruiter** working together 24/7:
+- 🏛️ **For Colleges (Placement Cell):** You can verify your students' real marks, internships, and degrees so no one can fake their profile or make unverified claims to visiting companies.
+- 🏢 **For Recruiters:** Instead of spending weeks manually screening 5,000+ inflated resumes, you receive a ranked leaderboard with an in-depth **360° Assessment Report** for every candidate.
+- 🧑‍🎓 **For Students:** You take a fair, dynamic assessment featuring an interactive **Live AI Video/Voice Interviewer** that asks 3 tailored questions, gives you a chance to explain your real projects, and provides constructive feedback.
+
+---
+
+## 🚨 What Problem is This Solving?
+
+Traditional university campus hiring drives are fundamentally broken for three reasons:
+
+### 1. The Resume Inflation & "Fake Skills" Crisis 🤥
+* **The Problem:** In the age of ChatGPT, students can generate polished resumes packed with buzzwords, unverified certifications, and exaggerated project roles (*"Built a distributed search engine at Google"*). Recruiters only discover the truth after wasting hours in late-stage interviews.
+* **Our Solution:** 
+  1. **Placement Cell Clearance Gate:** A college placement officer must officially verify and approve student profiles before they can participate in recruiter drives.
+  2. **AI Fact-Checking Recruiter:** The AI interviewer reads the candidate's verified university dossier and Stage 1 test mistakes, actively cross-examining candidate claims in real-time (*"Your verified college profile lists this as an academic project. What was your specific individual role?"*).
+
+### 2. The Recruiter Overwhelm & 3-Week Screening Delay ⏳
+* **The Problem:** When a top company visits a campus, thousands of candidates apply for only a handful of openings. HR panels are overwhelmed, conducting rushed 10-minute screenings or relying on generic multiple-choice tests that candidates cheat on.
+* **Our Solution:** 
+  * Every student goes through an automated **4-Stage Technical Pipeline**:
+    * **Stage 0:** Pre-Flight briefing & honor code agreement.
+    * **Stage 1:** Dynamic 4-question role MCQs (with a live 5-minute timer).
+    * **Stage 2:** Real-world technical architecture scenario writing.
+    * **Stage 3:** Live AI Voice/Avatar interview (strict 3-question sequence).
+  * Recruiters instantly receive a **360° Candidate Scorecard** with weighted scoring, integrity audits, and hiring recommendations.
+
+### 3. Account Fraud & Role Impersonation 🛡️
+* **The Problem:** In generic job portals, students can sign up with fake recruiter accounts to spy on interview questions, or unverified recruiters can harvest student PII.
+* **Our Solution:**
+  * **Placement Cell Governance:** Only verified placement officers can grant drive clearance to students or approve recruiter accounts before placement drives go live.
+
+---
+
 ## 📌 Executive Summary
 
 Every year, universities and visiting corporate recruiters face a massive bottleneck during campus placement drives:
@@ -128,15 +166,21 @@ Every candidate undertakes a structured 4-stage evaluation generated dynamically
 
 ---
 
-### 3. 🕵️ The AI Fact-Checking Cross-Examiner
+### 3. 🕵️ The AI Fact-Checking Cross-Examiner (Strict 3-Question Protocol)
 Standard AI interview tools are passive and sycophantic—they smile and nod at whatever a candidate claims. CampusHire AI's Python agent (`agent.py`) acts as a perceptive **Technical Recruiter & Authenticity Investigator**:
 - **Candidate Dossier Injection:** When generating the LiveKit dispatch token, the backend injects the candidate's verified college profile, Stage 1 MCQ mistakes, and Stage 2 technical submissions into room metadata.
-- **Adaptive Stage 1 Follow-Up Probes:**
-  > *"Welcome Mohamed! I noticed you scored 75% on the MCQs, but selected HTTP long-polling over WebSockets in question 4. What led you to favor polling there, and how would that impact your server overhead?"*
+- **Strict 3-Question Sequence:**
+  1. **Question 1:** The AI warmly greets the student by name and asks Question 1 (probing fundamental concepts or Stage 1 MCQ misconceptions).
+  2. **Question 2:** Once the student answers, the AI acknowledges in 1 sentence and asks Question 2 (probing practical architecture, system design, or verified profile projects).
+  3. **Question 3 (Final Question):** The AI acknowledges the answer and asks Question 3 (testing edge cases, scalability, or problem-solving).
+- **Personalized Wrap-Up & Auto-End:**
+  - As soon as the candidate answers Question 3, the AI delivers a personalized closing:
+    > *"Thank you [Student Name], that concludes our interview today. Best of luck with your application!"*
+  - The agent locks speech interruptions to prevent cutoff, broadcasts an `interview_completed` event to the frontend UI, transmits the conversation transcript to the backend, and automatically disconnects the room.
 - **Anti-Exaggeration Cross-Examination:**
   - If a student makes an unverified claim (*"I worked at Google and single-handedly scaled their distributed search engine"*):
   - The AI counters firmly and politely:
-  > *"That sounds fascinating. However, I have your verified profile from KTU University right in front of me, which lists an academic portal project and an internship. Could you clarify where this Google work took place and what was your exact individual role?"*
+  > *"That sounds fascinating. However, I have your verified profile from Royal College right in front of me, which lists an academic portal project and an internship. Could you clarify where this Google work took place and what was your exact individual role?"*
 
 ---
 
