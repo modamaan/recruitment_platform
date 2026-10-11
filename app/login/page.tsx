@@ -43,7 +43,8 @@ export default function LoginPage() {
         if (res.ok) {
           const user = await res.json();
           router.refresh();
-          router.push(`/dashboard/${user.role}`);
+          const targetDashboard = user.role === "placement_cell" ? "/dashboard/placement-cell" : `/dashboard/${user.role}`;
+          router.push(targetDashboard);
           return;
         }
       }

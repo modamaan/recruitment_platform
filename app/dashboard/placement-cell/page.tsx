@@ -34,6 +34,9 @@ import {
   FileText,
   RotateCcw,
   Sparkles,
+  Briefcase,
+  ShieldAlert,
+  UserX,
 } from "lucide-react";
 import { authFetch } from "@/lib/auth/token";
 import { authClient } from "@/lib/auth/client";
@@ -61,44 +64,78 @@ interface Student {
   createdAt: string;
 }
 
+interface Recruiter {
+  id: number;
+  neonUserId: string;
+  name: string;
+  email: string;
+  companyName?: string | null;
+  verificationStatus: "pending" | "verified" | "rejected";
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
+  rejectionReason?: string | null;
+  createdAt: string;
+}
+
 interface Stats {
   totalStudents: number;
   pendingCount: number;
   verifiedCount: number;
   rejectedCount: number;
+  totalRecruiters?: number;
+  pendingRecruitersCount?: number;
+  verifiedRecruitersCount?: number;
+  rejectedRecruitersCount?: number;
 }
 
 export default function PlacementCellDashboard() {
   const { data: session } = authClient.useSession();
   const officerName = session?.user?.name || "Placement Officer";
 
+  // Primary Desk State (Students vs Recruiters)
+  const [primaryDesk, setPrimaryDesk] = useState<"students" | "recruiters">("students");
+
   const [students, setStudents] = useState<Student[]>([]);
+  const [recruiters, setRecruiters] = useState<Recruiter[]>([]);
   const [stats, setStats] = useState<Stats>({
     totalStudents: 0,
     pendingCount: 0,
     verifiedCount: 0,
     rejectedCount: 0,
+    totalRecruiters: 0,
+    pendingRecruitersCount: 0,
+    verifiedRecruitersCount: 0,
+    rejectedRecruitersCount: 0,
   });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"all" | "pending" | "verified" | "rejected">("pending");
+  const [recruiterTab, setRecruiterTab] = useState<"all" | "pending" | "verified" | "rejected">("pending");
   const [searchQuery, setSearchQuery] = useState("");
+  const [recruiterSearchQuery, setRecruiterSearchQuery] = useState("");
 
-  // Review Dialog State
+  // Student Review Dialog State
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
+
+  // Recruiter Review Dialog State
+  const [selectedRecruiter, setSelectedRecruiter] = useState<Recruiter | null>(null);
+  const [isRecruiterReviewOpen, setIsRecruiterReviewOpen] = useState(false);
+  const [recruiterRejectionReason, setRecruiterRejectionReason] = useState("");
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
 
-  // Fetch stats and student directory
+  // Fetch stats, student directory, and recruiter directory
   const fetchData = async () => {
     try {
       setLoading(true);
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
-      const [statsRes, studentsRes] = await Promise.all([
+      const [statsRes, studentsRes, recruitersRes] = await Promise.all([
         authFetch(`${backendUrl}/api/placement-cell/stats`),
         authFetch(`${backendUrl}/api/placement-cell/students`),
+        authFetch(`${backendUrl}/api/placement-cell/recruiters`),
       ]);
 
       if (statsRes.ok) {
@@ -109,6 +146,11 @@ export default function PlacementCellDashboard() {
       if (studentsRes.ok) {
         const studentsData = await studentsRes.json();
         setStudents(studentsData);
+      }
+
+      if (recruitersRes.ok) {
+        const recruitersData = await recruitersRes.json();
+        setRecruiters(recruitersData);
       }
     } catch (err) {
       console.error("Failed to fetch placement cell data:", err);
@@ -237,6 +279,138 @@ export default function PlacementCellDashboard() {
     setIsReviewOpen(true);
   };
 
+  // Filter recruiters based on tab and search
+  const filteredRecruiters = useMemo(() => {
+    return recruiters.filter((r) => {
+      if (recruiterTab !== "all" && r.verificationStatus !== recruiterTab) {
+        return false;
+      }
+      if (recruiterSearchQuery.trim() !== "") {
+        const q = recruiterSearchQuery.toLowerCase().trim();
+        const matchesName = r.name?.toLowerCase().includes(q);
+        const matchesEmail = r.email?.toLowerCase().includes(q);
+        const matchesCompany = r.companyName?.toLowerCase().includes(q);
+        return matchesName || matchesEmail || matchesCompany;
+      }
+      return true;
+    });
+  }, [recruiters, recruiterTab, recruiterSearchQuery]);
+
+  // Handle Verify Recruiter
+  const handleVerifyRecruiter = async (recruiterId: number) => {
+    setIsSubmitting(true);
+    setActionSuccessMessage(null);
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      const res = await authFetch(`${backendUrl}/api/placement-cell/recruiters/${recruiterId}/verify`, {
+        method: "POST",
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        setRecruiters((prev) =>
+          prev.map((r) => (r.id === recruiterId ? result.recruiter : r))
+        );
+        if (selectedRecruiter && selectedRecruiter.id === recruiterId) {
+          setSelectedRecruiter(result.recruiter);
+        }
+        setStats((prev) => ({
+          ...prev,
+          pendingRecruitersCount: Math.max(0, (prev.pendingRecruitersCount || 1) - 1),
+          verifiedRecruitersCount: (prev.verifiedRecruitersCount || 0) + 1,
+        }));
+        setActionSuccessMessage("🛡️ Corporate Recruiter Cleared and Authorized!");
+        setTimeout(() => {
+          setIsRecruiterReviewOpen(false);
+          setActionSuccessMessage(null);
+        }, 1200);
+      }
+    } catch (err) {
+      console.error("Error verifying recruiter:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle Reject Recruiter
+  const handleRejectRecruiter = async (recruiterId: number) => {
+    setIsSubmitting(true);
+    setActionSuccessMessage(null);
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      const res = await authFetch(`${backendUrl}/api/placement-cell/recruiters/${recruiterId}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: recruiterRejectionReason || "Application denied: Student impersonation or unverified corporate credentials." }),
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        setRecruiters((prev) =>
+          prev.map((r) => (r.id === recruiterId ? result.recruiter : r))
+        );
+        if (selectedRecruiter && selectedRecruiter.id === recruiterId) {
+          setSelectedRecruiter(result.recruiter);
+        }
+        setStats((prev) => ({
+          ...prev,
+          pendingRecruitersCount: Math.max(0, (prev.pendingRecruitersCount || 1) - 1),
+          rejectedRecruitersCount: (prev.rejectedRecruitersCount || 0) + 1,
+        }));
+        setActionSuccessMessage("⚠️ Recruiter account rejected and flagged.");
+        setTimeout(() => {
+          setIsRecruiterReviewOpen(false);
+          setActionSuccessMessage(null);
+          setRecruiterRejectionReason("");
+        }, 1200);
+      }
+    } catch (err) {
+      console.error("Error rejecting recruiter:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle Reset Recruiter Status
+  const handleResetRecruiter = async (recruiterId: number) => {
+    setIsSubmitting(true);
+    setActionSuccessMessage(null);
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      const res = await authFetch(`${backendUrl}/api/placement-cell/recruiters/${recruiterId}/reset-pending`, {
+        method: "POST",
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        setRecruiters((prev) =>
+          prev.map((r) => (r.id === recruiterId ? result.recruiter : r))
+        );
+        if (selectedRecruiter && selectedRecruiter.id === recruiterId) {
+          setSelectedRecruiter(result.recruiter);
+        }
+        fetchData();
+        setActionSuccessMessage("🔄 Recruiter status reset to pending.");
+        setTimeout(() => {
+          setIsRecruiterReviewOpen(false);
+          setActionSuccessMessage(null);
+        }, 1200);
+      }
+    } catch (err) {
+      console.error("Error resetting recruiter:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Open recruiter review modal
+  const openRecruiterReviewModal = (recruiter: Recruiter) => {
+    setSelectedRecruiter(recruiter);
+    setRecruiterRejectionReason(recruiter.rejectionReason || "");
+    setActionSuccessMessage(null);
+    setIsRecruiterReviewOpen(true);
+  };
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
       {/* College Official Placement Header */}
@@ -272,8 +446,47 @@ export default function PlacementCellDashboard() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Primary Desk Switcher (Students Clearance vs Recruiter Approvals) */}
+      <div className="flex items-center gap-3 p-2 bg-[#fffef7] border-2 border-black rounded-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex-wrap">
+        <button
+          onClick={() => setPrimaryDesk("students")}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded font-kalam font-bold text-base transition-all ${
+            primaryDesk === "students"
+              ? "bg-[#fcec6a] text-black border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] -translate-y-0.5"
+              : "bg-transparent text-gray-700 hover:bg-gray-100 border-2 border-transparent"
+          }`}
+        >
+          <GraduationCap className="size-5" />
+          <span>🎓 Student Drive Clearance</span>
+          {stats.pendingCount > 0 && (
+            <span className="ml-1.5 px-2 py-0.5 bg-black text-[#fcec6a] text-xs font-mono font-bold rounded-full">
+              {stats.pendingCount}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setPrimaryDesk("recruiters")}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded font-kalam font-bold text-base transition-all ${
+            primaryDesk === "recruiters"
+              ? "bg-[#7cb4cf] text-black border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] -translate-y-0.5"
+              : "bg-transparent text-gray-700 hover:bg-gray-100 border-2 border-transparent"
+          }`}
+        >
+          <Briefcase className="size-5" />
+          <span>🏢 Recruiter Account Approvals</span>
+          {(stats.pendingRecruitersCount || 0) > 0 && (
+            <span className="ml-1.5 px-2 py-0.5 bg-red-600 text-white text-xs font-mono font-bold rounded-full animate-pulse">
+              {stats.pendingRecruitersCount} pending
+            </span>
+          )}
+        </button>
+      </div>
+
+      {primaryDesk === "students" && (
+        <>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Total Students */}
         <div 
           onClick={() => setActiveTab("all")}
@@ -521,8 +734,279 @@ export default function PlacementCellDashboard() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
-      {/* Verification & Review Dialog Modal */}
+      {primaryDesk === "recruiters" && (
+        <>
+          {/* Recruiter Stats Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div
+              onClick={() => setRecruiterTab("all")}
+              className={`cursor-pointer bg-white border-2 border-black p-4 rounded-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform hover:-translate-y-0.5 ${
+                recruiterTab === "all" ? "ring-2 ring-black bg-yellow-50/30" : ""
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-mono font-bold text-gray-500 uppercase">Total Recruiter Reg.</span>
+                <Briefcase className="size-4 text-black" />
+              </div>
+              <div className="text-3xl font-bold font-kalam">{stats.totalRecruiters || 0}</div>
+              <p className="text-[11px] text-gray-500 font-mono mt-1">Claimed corporate accounts</p>
+            </div>
+
+            <div
+              onClick={() => setRecruiterTab("pending")}
+              className={`cursor-pointer bg-[#fff9d2] border-2 border-black p-4 rounded-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform hover:-translate-y-0.5 ${
+                recruiterTab === "pending" ? "ring-2 ring-black" : ""
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-mono font-bold text-amber-900 uppercase">⏳ Needs Approval</span>
+                <Clock className="size-4 text-amber-700" />
+              </div>
+              <div className="text-3xl font-bold font-kalam text-amber-900">{stats.pendingRecruitersCount || 0}</div>
+              <p className="text-[11px] text-amber-800 font-mono mt-1">Pending institutional sign-off</p>
+            </div>
+
+            <div
+              onClick={() => setRecruiterTab("verified")}
+              className={`cursor-pointer bg-emerald-50 border-2 border-black p-4 rounded-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform hover:-translate-y-0.5 ${
+                recruiterTab === "verified" ? "ring-2 ring-black" : ""
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-mono font-bold text-emerald-800 uppercase">🛡️ Verified Partners</span>
+                <ShieldCheck className="size-4 text-emerald-700" />
+              </div>
+              <div className="text-3xl font-bold font-kalam text-emerald-900">{stats.verifiedRecruitersCount || 0}</div>
+              <p className="text-[11px] text-emerald-700 font-mono mt-1">Authorized corporate access</p>
+            </div>
+
+            <div
+              onClick={() => setRecruiterTab("rejected")}
+              className={`cursor-pointer bg-red-50 border-2 border-black p-4 rounded-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform hover:-translate-y-0.5 ${
+                recruiterTab === "rejected" ? "ring-2 ring-black" : ""
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-mono font-bold text-red-800 uppercase">⚠️ Impersonators / Flagged</span>
+                <ShieldAlert className="size-4 text-red-700" />
+              </div>
+              <div className="text-3xl font-bold font-kalam text-red-900">{stats.rejectedRecruitersCount || 0}</div>
+              <p className="text-[11px] text-red-700 font-mono mt-1">Flagged / Denied registrations</p>
+            </div>
+          </div>
+
+          {/* Anti-Impersonation Warning Banner */}
+          <div className="bg-[#f0f9ff] border-2 border-black p-4 rounded-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex items-start gap-3">
+            <div className="size-10 rounded-full bg-[#7cb4cf] border-2 border-black flex items-center justify-center font-bold text-lg shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+              🛡️
+            </div>
+            <div>
+              <h4 className="font-kalam font-bold text-lg text-black">
+                Placement Cell Anti-Student Impersonation Guard
+              </h4>
+              <p className="font-mono text-xs text-gray-700 leading-relaxed mt-0.5">
+                Students attempting to register as recruiters are automatically quarantined. They cannot post jobs, access student rosters, or view candidate interview scores until your office verifies their official corporate credentials and approves their account.
+              </p>
+            </div>
+          </div>
+
+          {/* Recruiter Review Card */}
+          <Card className="border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] bg-[#fffef7]">
+            <CardHeader className="border-b-2 border-black pb-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="text-2xl font-kalam font-bold flex items-center gap-2">
+                    <Building2 className="size-6 text-black" />
+                    Corporate Recruiter Verification Desk
+                  </CardTitle>
+                  <CardDescription className="font-mono text-xs text-gray-500">
+                    Verify company authenticity, confirm recruiter email domains, and grant or revoke recruitment portal access.
+                  </CardDescription>
+                </div>
+
+                {/* Filter Tabs */}
+                <div className="flex items-center gap-1.5 p-1 bg-gray-100 border-2 border-black rounded flex-wrap">
+                  <button
+                    onClick={() => setRecruiterTab("all")}
+                    className={`px-3 py-1 text-xs font-mono font-bold rounded transition-colors ${
+                      recruiterTab === "all" ? "bg-black text-white" : "text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    All ({stats.totalRecruiters || 0})
+                  </button>
+                  <button
+                    onClick={() => setRecruiterTab("pending")}
+                    className={`px-3 py-1 text-xs font-mono font-bold rounded transition-colors ${
+                      recruiterTab === "pending"
+                        ? "bg-[#fcec6a] text-black border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                        : "text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    ⏳ Pending ({stats.pendingRecruitersCount || 0})
+                  </button>
+                  <button
+                    onClick={() => setRecruiterTab("verified")}
+                    className={`px-3 py-1 text-xs font-mono font-bold rounded transition-colors ${
+                      recruiterTab === "verified" ? "bg-emerald-600 text-white" : "text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    🛡️ Verified ({stats.verifiedRecruitersCount || 0})
+                  </button>
+                  <button
+                    onClick={() => setRecruiterTab("rejected")}
+                    className={`px-3 py-1 text-xs font-mono font-bold rounded transition-colors ${
+                      recruiterTab === "rejected" ? "bg-red-600 text-white" : "text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    ⚠️ Flagged ({stats.rejectedRecruitersCount || 0})
+                  </button>
+                </div>
+              </div>
+
+              {/* Recruiter Search Box */}
+              <div className="mt-4 relative">
+                <Search className="size-4 absolute left-3 top-3 text-gray-400" />
+                <Input
+                  placeholder="Search by recruiter name, official email, or company / organization name..."
+                  value={recruiterSearchQuery}
+                  onChange={(e) => setRecruiterSearchQuery(e.target.value)}
+                  className="pl-9 border-2 border-black font-mono text-sm bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                />
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-6">
+              {loading ? (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-500 font-mono">
+                  <Loader2 className="size-8 animate-spin mb-3 text-black" />
+                  <p>Loading recruiter clearance directory...</p>
+                </div>
+              ) : filteredRecruiters.length === 0 ? (
+                <div className="text-center py-16 border-2 border-dashed border-gray-300 rounded bg-white p-8">
+                  <Briefcase className="size-12 mx-auto text-gray-300 mb-3" />
+                  <h3 className="font-kalam font-bold text-xl text-gray-700 mb-1">
+                    No recruiter accounts found in this category
+                  </h3>
+                  <p className="text-gray-500 font-mono text-xs max-w-md mx-auto">
+                    {recruiterTab === "pending"
+                      ? "Great work! There are no pending recruiter accounts waiting for verification."
+                      : "Try switching filter tabs or clearing your search query."}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredRecruiters.map((recruiter) => (
+                    <div
+                      key={recruiter.id}
+                      className="bg-white border-2 border-black p-5 rounded-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all hover:-translate-y-0.5"
+                    >
+                      {/* Recruiter Info */}
+                      <div className="space-y-2 flex-1">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <div className="size-10 rounded-full bg-[#7cb4cf] border-2 border-black flex items-center justify-center font-bold text-base font-kalam shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                            {recruiter.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <h3 className="font-kalam font-bold text-xl text-black leading-none flex items-center gap-2">
+                              {recruiter.name}
+                              <span className="text-xs font-mono font-normal text-gray-500">
+                                (ID: #{recruiter.id})
+                              </span>
+                            </h3>
+                            <div className="flex items-center gap-2 text-xs font-mono text-gray-600 mt-1 flex-wrap">
+                              <span className="flex items-center gap-1 font-semibold text-black bg-gray-100 border border-black px-2 py-0.5 rounded">
+                                <Building2 className="size-3" />
+                                {recruiter.companyName || "Organization Unspecified"}
+                              </span>
+                              <span>•</span>
+                              <span className="flex items-center gap-1">
+                                <Mail className="size-3 text-gray-400" />
+                                {recruiter.email}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Status & Rejection Notice */}
+                        <div className="flex items-center gap-2 flex-wrap pt-1">
+                          {recruiter.verificationStatus === "verified" && (
+                            <Badge className="bg-emerald-100 text-emerald-800 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] font-mono text-xs">
+                              <CheckCircle2 className="size-3.5 mr-1" />
+                              🛡️ Verified Corporate Partner
+                            </Badge>
+                          )}
+                          {recruiter.verificationStatus === "pending" && (
+                            <Badge className="bg-[#fff9d2] text-amber-900 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] font-mono text-xs">
+                              <Clock className="size-3.5 mr-1" />
+                              ⏳ Pending Institutional Approval
+                            </Badge>
+                          )}
+                          {recruiter.verificationStatus === "rejected" && (
+                            <Badge className="bg-red-100 text-red-800 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] font-mono text-xs">
+                              <XCircle className="size-3.5 mr-1" />
+                              ⚠️ Flagged / Impersonator Blocked
+                            </Badge>
+                          )}
+
+                          {recruiter.createdAt && (
+                            <span className="text-[11px] font-mono text-gray-400">
+                              Joined {new Date(recruiter.createdAt).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+
+                        {recruiter.verificationStatus === "rejected" && recruiter.rejectionReason && (
+                          <div className="bg-red-50 border border-red-300 p-2.5 rounded text-xs font-mono text-red-900 mt-2">
+                            <strong>Placement Cell Note:</strong> {recruiter.rejectionReason}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Recruiter Action Buttons */}
+                      <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+                        {recruiter.verificationStatus !== "verified" ? (
+                          <>
+                            <Button
+                              onClick={() => handleVerifyRecruiter(recruiter.id)}
+                              disabled={isSubmitting}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] font-kalam font-bold text-sm"
+                            >
+                              <ShieldCheck className="size-4 mr-1.5" />
+                              Approve Recruiter 🛡️
+                            </Button>
+                            <Button
+                              onClick={() => openRecruiterReviewModal(recruiter)}
+                              variant="outline"
+                              className="border-2 border-black bg-red-50 hover:bg-red-100 text-red-800 font-kalam text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                            >
+                              <ShieldAlert className="size-4 mr-1.5 text-red-600" />
+                              Flag Impersonator ⚠️
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              onClick={() => openRecruiterReviewModal(recruiter)}
+                              variant="outline"
+                              className="border-2 border-black font-kalam text-xs text-gray-700"
+                            >
+                              <RotateCcw className="size-3.5 mr-1" />
+                              Revoke / Manage Status
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
       {selectedStudent && (
         <Dialog open={isReviewOpen} onOpenChange={setIsReviewOpen}>
           <DialogContent className="w-[94vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] bg-[#fffef7] p-6 font-sans">
@@ -727,6 +1211,154 @@ export default function PlacementCellDashboard() {
                     <ShieldCheck className="size-4 mr-1.5" />
                   )}
                   🛡️ Grant Campus Drive Clearance
+                </Button>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Recruiter Clearance & Anti-Impersonation Dialog Modal */}
+      {selectedRecruiter && (
+        <Dialog open={isRecruiterReviewOpen} onOpenChange={setIsRecruiterReviewOpen}>
+          <DialogContent className="w-[94vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] bg-[#fffef7] p-6 font-sans">
+            <DialogHeader className="border-b-2 border-black pb-4">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <div className="size-14 rounded-full bg-[#7cb4cf] border-2 border-black flex items-center justify-center font-bold text-2xl font-kalam shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                    {selectedRecruiter.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <DialogTitle className="text-2xl font-kalam font-bold text-black flex items-center gap-2">
+                      {selectedRecruiter.name}
+                      <span className="text-xs font-mono font-normal text-gray-500">
+                        (Recruiter ID: #{selectedRecruiter.id})
+                      </span>
+                    </DialogTitle>
+                    <DialogDescription className="font-mono text-xs text-gray-600">
+                      {selectedRecruiter.email} • Organization: <strong>{selectedRecruiter.companyName || "Unspecified"}</strong>
+                    </DialogDescription>
+                  </div>
+                </div>
+
+                {/* Status Indicator */}
+                <div>
+                  {selectedRecruiter.verificationStatus === "verified" && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-100 text-emerald-800 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                      🛡️ Verified Corporate Partner
+                    </span>
+                  )}
+                  {selectedRecruiter.verificationStatus === "pending" && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold bg-[#fff9d2] text-amber-900 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                      ⏳ Pending Placement Cell Verification
+                    </span>
+                  )}
+                  {selectedRecruiter.verificationStatus === "rejected" && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold bg-red-100 text-red-800 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                      ⚠️ Flagged / Impersonator Blocked
+                    </span>
+                  )}
+                </div>
+              </div>
+            </DialogHeader>
+
+            {actionSuccessMessage && (
+              <div className="p-3 bg-emerald-100 border-2 border-black rounded text-emerald-900 font-bold font-kalam text-sm flex items-center gap-2">
+                <Sparkles className="size-4" />
+                {actionSuccessMessage}
+              </div>
+            )}
+
+            <div className="space-y-4 py-4">
+              {/* Recruiter Details Box */}
+              <div className="bg-white border-2 border-black p-4 rounded shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <h4 className="font-kalam font-bold text-lg mb-2 flex items-center gap-2">
+                  <Building2 className="size-5 text-black" /> Corporate Organization Profile
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs">
+                  <div>
+                    <span className="text-gray-500 block">Claimed Company:</span>
+                    <strong className="text-gray-900 text-sm">{selectedRecruiter.companyName || "Not Provided"}</strong>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block">Contact Email:</span>
+                    <strong className="text-gray-900 text-sm">{selectedRecruiter.email}</strong>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block">Full Name:</span>
+                    <strong className="text-gray-900">{selectedRecruiter.name}</strong>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block">Account Registered On:</span>
+                    <strong className="text-gray-900">
+                      {selectedRecruiter.createdAt ? new Date(selectedRecruiter.createdAt).toLocaleString() : "N/A"}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Impersonation & Audit Check */}
+              <div className="bg-[#fff9d2] border-2 border-black p-4 rounded shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <h4 className="font-kalam font-bold text-base text-amber-950 flex items-center gap-2">
+                  <ShieldAlert className="size-4 text-amber-800" />
+                  College Anti-Impersonation Checklist
+                </h4>
+                <ul className="text-xs font-mono text-amber-900 mt-2 space-y-1 list-disc list-inside">
+                  <li>Check if this email belongs to a student enrolled in college records.</li>
+                  <li>Verify if company name matches recognized recruitment partner companies.</li>
+                  <li>Approving this account grants instant access to post campus jobs and view all verified candidate profiles.</li>
+                </ul>
+              </div>
+
+              {/* Flag / Impersonation Rejection Reason */}
+              <div className="bg-red-50/70 border-2 border-black p-4 rounded shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <h4 className="font-kalam font-bold text-lg text-red-950 mb-1 flex items-center gap-2">
+                  <UserX className="size-4 text-red-600" />
+                  Flag Impersonation or Decline Access
+                </h4>
+                <p className="text-xs font-mono text-gray-600 mb-2">
+                  If this is a student pretending to be a recruiter, provide an official institutional note.
+                </p>
+                <Textarea
+                  placeholder="e.g. Account rejected: Enrolled student detected attempting to bypass student portal restrictions. Please use student registration."
+                  value={recruiterRejectionReason}
+                  onChange={(e) => setRecruiterRejectionReason(e.target.value)}
+                  className="font-mono text-xs bg-white border-2 border-black"
+                  rows={3}
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="border-t-2 border-black pt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setIsRecruiterReviewOpen(false)}
+                className="w-full sm:w-auto border-2 border-black font-kalam"
+              >
+                Close
+              </Button>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Button
+                  onClick={() => handleRejectRecruiter(selectedRecruiter.id)}
+                  disabled={isSubmitting}
+                  className="flex-1 sm:flex-none bg-red-100 hover:bg-red-200 text-red-800 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] font-kalam font-bold"
+                >
+                  <UserX className="size-4 mr-1.5" />
+                  Flag as Impersonator / Reject
+                </Button>
+
+                <Button
+                  onClick={() => handleVerifyRecruiter(selectedRecruiter.id)}
+                  disabled={isSubmitting}
+                  className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] font-kalam font-bold"
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="size-4 animate-spin mr-1.5" />
+                  ) : (
+                    <ShieldCheck className="size-4 mr-1.5" />
+                  )}
+                  🛡️ Approve & Authorize Recruiter
                 </Button>
               </div>
             </DialogFooter>

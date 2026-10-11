@@ -8,7 +8,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { AccessToken, AgentDispatchClient } from 'livekit-server-sdk';
 import { db } from './db';
 import { users, jobs, interviews } from './db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or, desc } from 'drizzle-orm';
 const app = express();
 const port = process.env.PORT || 8000;
 
@@ -61,9 +61,22 @@ app.get('/api/me', requireAuth, async (req, res) => {
 // Protected route: Save a newly registered user to the database
 app.post('/api/users', requireAuth, async (req, res) => {
   const neonUserId = (req as any).user.id;
-  const { name, email, role } = req.body;
+  const { name, email, role, companyName } = req.body;
 
   try {
+    // 1. Strict single Placement Cell account rule:
+    // Only one authorized Placement Cell account per institution!
+    if (role === 'placement_cell') {
+      const existingPlacementCell = await db.query.users.findFirst({
+        where: eq(users.role, 'placement_cell')
+      });
+      if (existingPlacementCell && existingPlacementCell.neonUserId !== neonUserId) {
+        return res.status(403).json({
+          error: 'Institution already has an active Placement Cell administrator. Additional placement cell registrations are prohibited.'
+        });
+      }
+    }
+
     // Check if they already exist
     const existing = await db.query.users.findFirst({
       where: eq(users.neonUserId, neonUserId)
@@ -73,12 +86,17 @@ app.post('/api/users', requireAuth, async (req, res) => {
       return res.json(existing);
     }
 
+    // Both student and recruiter accounts require Placement Cell verification!
+    // Only the single initial placement_cell officer is pre-verified.
+    const initialStatus = role === 'placement_cell' ? 'verified' : 'pending';
+
     const newUser = await db.insert(users).values({
       neonUserId,
       name,
       email,
       role,
-      verificationStatus: role === 'student' ? 'pending' : 'verified',
+      companyName: role === 'recruiter' ? (companyName || null) : null,
+      verificationStatus: initialStatus,
     }).returning();
 
     res.status(201).json(newUser[0]);
@@ -142,6 +160,14 @@ app.post('/api/jobs', requireAuth, async (req, res) => {
   const { title, companyName, location, employmentType, salaryRange, description, requirements } = req.body;
 
   try {
+    const user = await db.query.users.findFirst({
+      where: eq(users.neonUserId, neonUserId)
+    });
+
+    if (user?.role === 'recruiter' && user?.verificationStatus !== 'verified') {
+      return res.status(403).json({ error: 'Recruiter account is pending Placement Cell verification' });
+    }
+
     const newJob = await db.insert(jobs).values({
       recruiterId: neonUserId,
       title,
@@ -178,12 +204,49 @@ app.get('/api/jobs', requireAuth, async (req, res) => {
 
 // Protected route: Get all available jobs for the student dashboard
 app.get('/api/jobs/all', requireAuth, async (req, res) => {
+  const neonUserId = (req as any).user.id;
   try {
     const allJobs = await db.query.jobs.findMany({
       orderBy: (jobs, { desc }) => [desc(jobs.createdAt)],
     });
 
-    res.json(allJobs);
+    // Find student in users table to get both neonUserId and numeric id
+    const user = await db.query.users.findFirst({
+      where: eq(users.neonUserId, neonUserId)
+    });
+
+    // Fetch all interviews for this student
+    const studentInterviews = await db.query.interviews.findMany({
+      where: or(
+        eq(interviews.studentId, neonUserId),
+        user ? eq(interviews.studentId, String(user.id)) : undefined
+      ),
+      orderBy: (interviews, { desc }) => [desc(interviews.id)],
+    });
+
+    const jobsWithStatus = allJobs.map((job) => {
+      const userInterviewsForJob = studentInterviews.filter((i) => i.jobId === job.id);
+      const completedInterview = userInterviewsForJob.find(
+        (i) => i.status === 'completed' || i.stage === 'completed'
+      );
+      const activeInterview = completedInterview || userInterviewsForJob[0];
+
+      return {
+        ...job,
+        interview: activeInterview ? {
+          id: activeInterview.id,
+          stage: activeInterview.stage,
+          status: activeInterview.status,
+          matchScore: activeInterview.matchScore,
+          voiceScore: activeInterview.voiceScore,
+          mcqScore: activeInterview.mcqScore,
+          technicalScore: activeInterview.technicalScore,
+          isCompleted: activeInterview.status === 'completed' || activeInterview.stage === 'completed',
+        } : null
+      };
+    });
+
+    res.json(jobsWithStatus);
   } catch (error) {
     console.error("Failed to fetch all jobs:", error);
     res.status(500).json({ error: 'Failed to fetch jobs' });

@@ -5,7 +5,8 @@ export const users = pgTable("users", {
   neonUserId: text("neon_user_id").unique().notNull(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
-  role: text("role").notNull(), // 'student' or 'recruiter'
+  role: text("role").notNull(), // 'student', 'recruiter', 'placement_cell'
+  companyName: text("company_name"),
   university: text("university"),
   degree: text("degree"),
   gradYear: text("grad_year"),

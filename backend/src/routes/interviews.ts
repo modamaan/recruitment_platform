@@ -115,9 +115,11 @@ router.get("/session/:id", optionalAuth, async (req: any, res: any) => {
 
         // 2. If not, check if parsedId was a jobId and find existing interview for THIS user & job
         if (!interviewRecord) {
-          interviewRecord = await db.query.interviews.findFirst({
-            where: and(eq(interviews.jobId, parsedId), eq(interviews.studentId, authUserId))
+          const userInterviewsForJob = await db.query.interviews.findMany({
+            where: and(eq(interviews.jobId, parsedId), eq(interviews.studentId, authUserId)),
+            orderBy: (interviews, { desc }) => [desc(interviews.id)]
           });
+          interviewRecord = userInterviewsForJob.find(i => i.status === 'completed' || i.stage === 'completed') || userInterviewsForJob[0];
         }
 
         // 3. If interview was found by parsedId but belonged to another user or seed data, adapt to THIS user & job
@@ -132,9 +134,11 @@ router.get("/session/:id", optionalAuth, async (req: any, res: any) => {
           });
 
           if (jobRecord) {
-            const existingForUser = await db.query.interviews.findFirst({
-              where: and(eq(interviews.jobId, jobRecord.id), eq(interviews.studentId, authUserId))
+            const userInterviews = await db.query.interviews.findMany({
+              where: and(eq(interviews.jobId, jobRecord.id), eq(interviews.studentId, authUserId)),
+              orderBy: (interviews, { desc }) => [desc(interviews.id)]
             });
+            const existingForUser = userInterviews.find(i => i.status === 'completed' || i.stage === 'completed') || userInterviews[0];
             if (existingForUser) {
               interviewRecord = existingForUser;
             } else {
@@ -351,7 +355,7 @@ router.post("/session/:id/submit-stage", optionalAuth, async (req: any, res: any
 // 3. POST /api/interviews/complete
 // Compiles the 360° Assessment Report across MCQs, Technical Scenarios, and Voice Interview
 router.post("/complete", optionalAuth, async (req: any, res: any) => {
-  const { interviewId, transcript, clientReportData } = req.body;
+  const { interviewId, transcript, clientReportData, proctoringData } = req.body;
   const authUserId = req.user?.id;
 
   if (!interviewId) {
@@ -418,7 +422,11 @@ MCQ Answers breakdown: ${JSON.stringify(existingInterview.mcqAnswers || [], null
 STAGE 2: TECHNICAL SCENARIOS SCORE: ${technicalScore}/100
 Technical Answers provided: ${JSON.stringify(existingInterview.technicalAnswers || [], null, 2)}
 
-STAGE 3: LIVE AI VOICE INTERVIEW TRANSCRIPT:
+STAGE 3: LIVE AI VOICE INTERVIEW & VISUAL PROCTORING:
+- Video Face Absence Warnings: ${proctoringData?.faceAbsenceCount ?? 0}
+- Out-of-Frame Duration: ${proctoringData?.outOfFrameSeconds ?? 0}s
+- Visual Compliance Status: ${proctoringData?.visualIntegrityStatus || "100% In-Frame Compliance"}
+Transcript:
 ${JSON.stringify(transcript || [{ role: "system", content: "Candidate conducted voice discussion." }], null, 2)}
 
 JOB DETAILS:
@@ -428,6 +436,7 @@ JOB DETAILS:
 TASK:
 1. Authenticity & Integrity Audit:
    - Check if candidate during the voice interview claimed wild, unverified work (e.g. claiming to have worked at Google, Meta, or claiming enterprise-scale systems not present in their verified Royal College profile).
+   - Review the Visual Proctoring presence log. If they had multiple out-of-frame flags, factor that into integrity.
    - If they stayed honest and humble, praise their grounded authenticity.
    - If they exaggerated or contradicted their profile, flag it clearly.
 2. Voice & Communication Score: (0-100)
@@ -443,7 +452,12 @@ Respond ONLY with valid JSON matching this schema:
   "compositeScore": number,
   "authenticityAudit": {
     "status": "Verified & Grounded" | "Minor Exaggerations Flagged" | "High Integrity Discrepancy",
-    "notes": "string"
+    "notes": "string",
+    "visualProctoring": {
+      "status": "string",
+      "absenceCount": number,
+      "outOfFrameSeconds": number
+    }
   },
   "feedback": "3-paragraph markdown summary",
   "strengths": ["string", "string", "string"],
@@ -463,6 +477,14 @@ Respond ONLY with valid JSON matching this schema:
       voiceScore = reportData.voiceScore || 80;
       compositeScore = reportData.compositeScore || Math.round(0.25 * mcqScore + 0.35 * technicalScore + 0.40 * voiceScore);
       feedbackSummary = reportData.feedback || "Candidate completed the multi-stage evaluation.";
+
+      if (reportData?.authenticityAudit && !reportData.authenticityAudit.visualProctoring) {
+        reportData.authenticityAudit.visualProctoring = {
+          status: (proctoringData?.faceAbsenceCount || 0) === 0 ? "100% In-Frame Compliance" : `${proctoringData?.faceAbsenceCount} Out-of-Frame Warnings`,
+          absenceCount: proctoringData?.faceAbsenceCount || 0,
+          outOfFrameSeconds: proctoringData?.outOfFrameSeconds || 0
+        };
+      }
     } catch (llmErr) {
       console.warn("AI 360 evaluation synthesis fallback:", llmErr);
       voiceScore = 82;
@@ -471,8 +493,15 @@ Respond ONLY with valid JSON matching this schema:
         voiceScore: 82,
         compositeScore,
         authenticityAudit: {
-          status: "Verified & Grounded",
-          notes: "Spoken experience aligns well with Royal College academic and project profile. No fraudulent claims detected."
+          status: (proctoringData?.faceAbsenceCount || 0) > 2 ? "Minor Exaggerations Flagged" : "Verified & Grounded",
+          notes: (proctoringData?.faceAbsenceCount || 0) > 0
+            ? `Candidate was flagged out-of-frame ${proctoringData.faceAbsenceCount} time(s). Spoken responses were consistent with verified academic credentials.`
+            : "Spoken experience aligns well with Royal College academic and project profile. Continuous video presence verified with zero absences.",
+          visualProctoring: {
+            status: (proctoringData?.faceAbsenceCount || 0) === 0 ? "100% In-Frame Compliance" : `${proctoringData?.faceAbsenceCount} Out-of-Frame Warnings`,
+            absenceCount: proctoringData?.faceAbsenceCount || 0,
+            outOfFrameSeconds: proctoringData?.outOfFrameSeconds || 0
+          }
         },
         feedback: `Candidate showed steady problem-solving aptitude across core questions, scoring ${mcqScore}% on fundamental MCQs and ${technicalScore}% on technical architecture. In the verbal interview, they communicated with clarity and responded reasonably to trade-off probes.`,
         strengths: [

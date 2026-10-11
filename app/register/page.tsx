@@ -10,7 +10,8 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"student" | "recruiter" | "placement_cell">("student");
+  const [companyName, setCompanyName] = useState("");
+  const [role, setRole] = useState<"student" | "recruiter">("student");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -19,6 +20,12 @@ export default function RegisterPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
+
+    if (role === "recruiter" && !companyName.trim()) {
+      setError("Company / Organization Name is required for recruiter registration.");
+      setLoading(false);
+      return;
+    }
 
     try {
       const { data, error: authError } = await authClient.signUp.email({
@@ -46,14 +53,16 @@ export default function RegisterPage() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
         },
-        body: JSON.stringify({ name, email, role }),
+        body: JSON.stringify({ name, email, role, companyName: role === "recruiter" ? companyName.trim() : undefined }),
       });
 
-      if (!res.ok) throw new Error("Failed to save profile to database");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to save profile to database");
+      }
 
       router.refresh();
-      const targetPath = role === "placement_cell" ? "/dashboard/placement-cell" : `/dashboard/${role}`;
-      router.push(targetPath); 
+      router.push(`/dashboard/${role}`); 
     } catch (err: any) {
       setError(err?.message || "An unexpected error occurred. Please try again.");
     } finally {
@@ -97,30 +106,51 @@ export default function RegisterPage() {
           <form onSubmit={handleRegister} className="space-y-5">
             <div className="mb-6">
               <label className="block font-kalam text-2xl mb-3">I am registering as...</label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 <button 
                   type="button" 
                   onClick={() => setRole("student")}
-                  className={`py-2.5 px-2 text-base font-kalam font-bold rounded-sm border-2 border-black transition-all transform ${role === 'student' ? 'bg-[#fcec6a] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] -translate-y-1 rotate-1' : 'bg-white hover:bg-gray-50'}`}
+                  className={`py-3 px-3 text-lg font-kalam font-bold rounded-sm border-2 border-black transition-all transform flex items-center justify-center gap-2 ${role === 'student' ? 'bg-[#fcec6a] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] -translate-y-1 rotate-1' : 'bg-white hover:bg-gray-50'}`}
                 >
-                  🎓 Student
+                  <span>🎓</span> Student
                 </button>
                 <button 
                   type="button" 
                   onClick={() => setRole("recruiter")}
-                  className={`py-2.5 px-2 text-base font-kalam font-bold rounded-sm border-2 border-black transition-all transform ${role === 'recruiter' ? 'bg-[#fcec6a] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] -translate-y-1 -rotate-1' : 'bg-white hover:bg-gray-50'}`}
+                  className={`py-3 px-3 text-lg font-kalam font-bold rounded-sm border-2 border-black transition-all transform flex items-center justify-center gap-2 ${role === 'recruiter' ? 'bg-[#fcec6a] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] -translate-y-1 -rotate-1' : 'bg-white hover:bg-gray-50'}`}
                 >
-                  💼 Recruiter
-                </button>
-                <button 
-                  type="button" 
-                  onClick={() => setRole("placement_cell")}
-                  className={`py-2.5 px-2 text-base font-kalam font-bold rounded-sm border-2 border-black transition-all transform ${role === 'placement_cell' ? 'bg-[#fcec6a] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] -translate-y-1 rotate-1' : 'bg-white hover:bg-gray-50'}`}
-                >
-                  🛡️ Placement Cell
+                  <span>💼</span> Recruiter
                 </button>
               </div>
+
+              {role === "recruiter" && (
+                <div className="mt-3 p-3 bg-amber-50 border-2 border-dashed border-amber-400 rounded-sm font-mono text-xs text-amber-900 leading-relaxed">
+                  <p className="font-bold flex items-center gap-1.5 mb-1">
+                    🛡️ Placement Cell Clearance Gate:
+                  </p>
+                  <p>
+                    All corporate recruiter accounts must be <strong>verified and approved by the Royal College Placement Cell</strong> before drive access is granted. Students attempting to register as recruiters will be rejected.
+                  </p>
+                </div>
+              )}
             </div>
+
+            {role === "recruiter" && (
+              <div>
+                <label className="block font-kalam text-2xl mb-1" htmlFor="companyName">
+                  Company / Organization Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="companyName"
+                  type="text"
+                  className="w-full border-2 border-black p-3 bg-white font-mono text-sm focus:outline-none shadow-[inset_2px_2px_0px_0px_rgba(0,0,0,0.05)] focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all transform focus:-translate-y-1"
+                  placeholder="e.g. Google, Microsoft, Razorpay"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  required
+                />
+              </div>
+            )}
 
             <div>
               <label className="block font-kalam text-2xl mb-1" htmlFor="name">Full Name</label>

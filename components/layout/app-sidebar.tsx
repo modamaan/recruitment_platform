@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Home, Briefcase, FileText, Users, Mic, LogOut, ShieldCheck } from "lucide-react"
 import { usePathname, useRouter } from "next/navigation"
+import Link from "next/link"
 import { authClient } from "@/lib/auth/client"
 
 import {
@@ -50,14 +51,22 @@ export function AppSidebar() {
   // Determine role based on the current URL path for this mockup phase
   const isStudent = pathname?.startsWith("/dashboard/student")
   const isRecruiter = pathname?.startsWith("/dashboard/recruiter")
-  const isPlacementCell = pathname?.startsWith("/dashboard/placement-cell")
+  const isPlacementCell = pathname?.startsWith("/dashboard/placement-cell") || pathname?.startsWith("/dashboard/placement_cell")
 
   return (
     <Sidebar>
       <SidebarHeader className="p-6 pb-4">
-        <h2 className="text-3xl font-bold tracking-tight text-black font-kalam transform -rotate-1">
-          <span className="bg-[#fcec6a] px-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] rounded-sm inline-block border border-black">n.</span> Placement
-        </h2>
+        <Link href="/" className="group inline-block focus:outline-none">
+          <h2 className="text-3xl font-bold tracking-tight text-black font-kalam transform -rotate-1 flex items-center gap-1.5 transition-transform group-hover:scale-[1.02]">
+            <span className="bg-[#fcec6a] px-2.5 py-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] rounded-sm inline-block border-2 border-black">
+              Campus
+            </span>
+            <span className="text-black">Hire</span>
+            <span className="text-[10px] bg-[#e15b58] text-white px-1.5 py-0.5 rounded border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] font-mono font-bold tracking-wider ml-0.5 -mt-2">
+              AI
+            </span>
+          </h2>
+        </Link>
       </SidebarHeader>
       <SidebarSeparator />
       <SidebarContent>

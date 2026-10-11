@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PlacedStudentsSection } from "@/components/home/placed-students-section";
+import { InterviewWorkflowSection } from "@/components/home/interview-workflow-section";
 
 export default function Home() {
   return (
@@ -18,14 +19,17 @@ export default function Home() {
 
       {/* Navbar */}
       <header className="relative z-10 flex items-center justify-between px-6 py-4 max-w-6xl mx-auto border-b-2 border-black/10">
-        <div className="flex items-center gap-2">
-          <div className="bg-yellow-300 text-black font-kalam font-bold text-2xl px-4 py-1 border-2 border-black rounded-sm transform -rotate-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-            n.
+        <Link href="/" className="flex items-center gap-1.5 group focus:outline-none">
+          <div className="bg-yellow-300 text-black font-kalam font-bold text-2xl px-3 py-0.5 border-2 border-black rounded-sm transform -rotate-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-center gap-1 transition-transform group-hover:scale-[1.02]">
+            <span>Campus</span>
+            <span className="text-black">Hire</span>
+            <span className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded border border-black font-mono font-bold ml-1">AI</span>
           </div>
-        </div>
+        </Link>
         <nav className="flex items-center gap-8 font-kalam text-xl">
           <Link href="#problem" className="hover:underline decoration-2 underline-offset-4 hidden sm:block">The Problem</Link>
           <Link href="#product" className="hover:underline decoration-2 underline-offset-4 hidden sm:block">The Product</Link>
+          <Link href="#workflow" className="hover:underline decoration-2 underline-offset-4 hidden sm:block">Workflow ⚡</Link>
           <Link href="#placements" className="hover:underline decoration-2 underline-offset-4 hidden sm:block">Placed Students 🎓</Link>
           <Link href="/login" className="bg-black text-white px-5 py-1.5 rounded-sm border-2 border-black hover:bg-yellow-300 hover:text-black transition-colors transform rotate-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
             Log in
@@ -62,6 +66,11 @@ export default function Home() {
               <Link href="/dashboard/recruiter/candidates">
                 <button className="bg-pink-200 text-black px-8 py-3.5 font-kalam text-2xl rounded-sm border-2 border-black hover:-translate-y-1 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2 transform rotate-2">
                   Enter as Recruiter 🏢
+                </button>
+              </Link>
+              <Link href="/dashboard/placement-cell">
+                <button className="bg-[#7cb4cf] text-black px-7 py-3.5 font-kalam text-2xl rounded-sm border-2 border-black hover:-translate-y-1 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2 transform -rotate-1">
+                  Placement Cell 🛡️
                 </button>
               </Link>
             </div>
@@ -262,6 +271,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* 4-Stage Interview Workflow Section */}
+      <InterviewWorkflowSection />
 
       {/* Hall of Fame / Placed Students Section */}
       <PlacedStudentsSection />

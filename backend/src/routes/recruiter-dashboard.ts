@@ -9,19 +9,24 @@ router.get("/dashboard", async (req: any, res: any) => {
   try {
     const userId = req.user.id; // neonUserId from verifyToken middleware
 
-    // Fetch recruiter's jobs
-    const recruiterJobs = await db.select().from(jobs).where(eq(jobs.recruiterId, userId));
-    const activeJobsCount = recruiterJobs.length;
+    const user = await db.query.users.findFirst({
+      where: eq(users.neonUserId, userId)
+    });
 
-    if (activeJobsCount === 0) {
-      return res.json({
-        activeJobs: 0,
-        totalCandidates: 0,
-        interviewsSent: 0,
-        completedInterviews: 0,
-        recentActivity: []
+    if (user?.role === 'recruiter' && user.verificationStatus !== 'verified') {
+      return res.status(403).json({
+        error: "Recruiter account pending Placement Cell approval",
+        verificationStatus: user.verificationStatus,
+        rejectionReason: user.rejectionReason,
       });
     }
+
+    // Fetch recruiter's jobs (fallback to all active jobs if none posted yet)
+    let recruiterJobs = await db.select().from(jobs).where(eq(jobs.recruiterId, userId));
+    if (recruiterJobs.length === 0) {
+      recruiterJobs = await db.select().from(jobs);
+    }
+    const activeJobsCount = recruiterJobs.length;
 
     const jobIds = recruiterJobs.map(job => job.id);
 
@@ -101,6 +106,141 @@ router.get("/dashboard", async (req: any, res: any) => {
   } catch (error) {
     console.error("Dashboard API Error:", error);
     res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// 2. GET /api/recruiter/candidates - Real dynamic candidate pipeline
+router.get("/candidates", async (req: any, res: any) => {
+  try {
+    const userId = req.user?.id;
+
+    const user = await db.query.users.findFirst({
+      where: eq(users.neonUserId, userId)
+    });
+
+    if (user?.role === 'recruiter' && user.verificationStatus !== 'verified') {
+      return res.status(403).json({
+        error: "Recruiter account pending Placement Cell approval",
+        verificationStatus: user.verificationStatus,
+        rejectionReason: user.rejectionReason,
+      });
+    }
+
+    // Fetch recruiter's jobs
+    const recruiterJobs = await db.select().from(jobs).where(eq(jobs.recruiterId, userId));
+    const jobIds = recruiterJobs.map(j => j.id);
+
+    // If recruiter has jobs, fetch interviews for those jobs; if none, fetch all interviews so demo/hackathon recruiter accounts can see candidate submissions
+    let candidateInterviews;
+    if (jobIds.length > 0) {
+      candidateInterviews = await db.select().from(interviews).where(inArray(interviews.jobId, jobIds)).orderBy(desc(interviews.id));
+    } else {
+      candidateInterviews = await db.select().from(interviews).orderBy(desc(interviews.id));
+    }
+
+    const allJobs = await db.select().from(jobs);
+    const jobsMap = new Map(allJobs.map(j => [j.id, j]));
+
+    const allUsers = await db.select().from(users);
+    const usersMap = new Map(allUsers.map(u => [u.neonUserId, u]));
+
+    const candidateList = candidateInterviews.map((inv) => {
+      const student = usersMap.get(inv.studentId);
+      const job = jobsMap.get(inv.jobId);
+      const isCompleted = inv.status === 'completed' || inv.stage === 'completed';
+
+      return {
+        id: inv.id,
+        interviewId: inv.id,
+        candidateName: student?.name || "Student Candidate",
+        candidateEmail: student?.email || "candidate@college.edu",
+        university: student?.university || "Royal College of Engineering",
+        degree: student?.degree || "B.E. Computer Science",
+        gradYear: student?.gradYear || "2026",
+        role: job?.title || "Software Engineer",
+        companyName: job?.companyName || "Placement Partner",
+        jobId: inv.jobId,
+        score: inv.matchScore || inv.voiceScore || (isCompleted ? 75 : 60),
+        status: isCompleted ? "Interview Completed" : inv.stage === 'briefing' ? "Pending Interview" : `In Progress (${inv.stage})`,
+        stage: inv.stage,
+        isCompleted,
+        hasReport: !!inv.reportData,
+        reportData: inv.reportData,
+        createdAt: inv.createdAt
+      };
+    });
+
+    res.json(candidateList);
+  } catch (error) {
+    console.error("Error fetching candidates for recruiter:", error);
+    res.status(500).json({ error: "Failed to fetch candidates" });
+  }
+});
+
+// 3. GET /api/recruiter/reports - List of all completed reports
+router.get("/reports", async (req: any, res: any) => {
+  try {
+    const completedList = await db.query.interviews.findMany({
+      where: eq(interviews.status, "completed"),
+      orderBy: (interviews, { desc }) => [desc(interviews.id)]
+    });
+
+    const allJobs = await db.select().from(jobs);
+    const jobsMap = new Map(allJobs.map(j => [j.id, j]));
+
+    const allUsers = await db.select().from(users);
+    const usersMap = new Map(allUsers.map(u => [u.neonUserId, u]));
+
+    const reports = completedList.map(inv => ({
+      id: inv.id,
+      interviewId: inv.id,
+      student: usersMap.get(inv.studentId),
+      job: jobsMap.get(inv.jobId),
+      reportData: inv.reportData,
+      score: inv.matchScore,
+      createdAt: inv.createdAt
+    }));
+
+    res.json(reports);
+  } catch (error) {
+    console.error("Error fetching reports list:", error);
+    res.status(500).json({ error: "Failed to fetch reports" });
+  }
+});
+
+// 4. GET /api/recruiter/reports/:id - Individual dynamic 360° report
+router.get("/reports/:id", async (req: any, res: any) => {
+  try {
+    const reportId = parseInt(req.params.id, 10);
+    if (isNaN(reportId)) {
+      return res.status(400).json({ error: "Invalid report ID" });
+    }
+
+    const interview = await db.query.interviews.findFirst({
+      where: eq(interviews.id, reportId)
+    });
+
+    if (!interview) {
+      return res.status(404).json({ error: "Interview report not found" });
+    }
+
+    const job = await db.query.jobs.findFirst({
+      where: eq(jobs.id, interview.jobId)
+    });
+
+    const student = await db.query.users.findFirst({
+      where: eq(users.neonUserId, interview.studentId)
+    });
+
+    res.json({
+      interview,
+      job,
+      student,
+      reportData: interview.reportData
+    });
+  } catch (error) {
+    console.error("Error fetching report:", error);
+    res.status(500).json({ error: "Failed to fetch report" });
   }
 });
 
