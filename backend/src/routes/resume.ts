@@ -34,6 +34,9 @@ Your job is to parse this text and return a JSON object with the following field
 - linkedin: (string) Their LinkedIn URL (if found).
 - github: (string) Their GitHub or portfolio URL (if found).
 - bio: (string) A professional 3-sentence summary based on their experience and skills.
+- projects: (string) A concise paragraph listing their top 2-3 technical projects and the tech stack used.
+- internships: (string) A concise paragraph summarizing their past internships or work experience.
+- hackathons: (string) A concise paragraph listing any hackathons, competitions, or notable achievements.
 
 Respond ONLY with the JSON object. Do not wrap it in markdown blockquotes like \`\`\`json.
 Just output the raw JSON. If a field is not found, leave it as an empty string (or null for numbers).

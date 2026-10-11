@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Home, Briefcase, FileText, Users, Mic, LogOut } from "lucide-react"
+import { Home, Briefcase, FileText, Users, Mic, LogOut, ShieldCheck } from "lucide-react"
 import { usePathname, useRouter } from "next/navigation"
 import { authClient } from "@/lib/auth/client"
 
@@ -33,6 +33,10 @@ const recruiterNav = [
   { title: "Reports", url: "/dashboard/recruiter/reports", icon: FileText },
 ]
 
+const placementCellNav = [
+  { title: "Drive Clearance Desk", url: "/dashboard/placement-cell", icon: ShieldCheck },
+]
+
 export function AppSidebar() {
   const pathname = usePathname()
   const router = useRouter()
@@ -46,6 +50,7 @@ export function AppSidebar() {
   // Determine role based on the current URL path for this mockup phase
   const isStudent = pathname?.startsWith("/dashboard/student")
   const isRecruiter = pathname?.startsWith("/dashboard/recruiter")
+  const isPlacementCell = pathname?.startsWith("/dashboard/placement-cell")
 
   return (
     <Sidebar>
@@ -83,6 +88,25 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {recruiterNav.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton render={<a href={item.url} />} isActive={pathname === item.url}>
+                      <item.icon />
+                      <span className={pathname === item.url ? "font-bold underline decoration-2 underline-offset-4" : ""}>{item.title}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* Render Placement Cell Navigation if on a placement-cell route */}
+        {isPlacementCell && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Placement Cell Portal</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {placementCellNav.map((item) => (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton render={<a href={item.url} />} isActive={pathname === item.url}>
                       <item.icon />

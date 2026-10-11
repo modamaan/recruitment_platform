@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { authClient } from "@/lib/auth/client"
+import { authFetch } from "@/lib/auth/token"
 import { Loader2, Briefcase, Sparkles, Mail, Star, ExternalLink } from "lucide-react"
 
 export default function PostJobPage() {
@@ -33,28 +34,18 @@ export default function PostJobPage() {
   const [matchingJob, setMatchingJob] = useState<any>(null)
   const [matchedCandidates, setMatchedCandidates] = useState<any[]>([])
   const [selectedCandidates, setSelectedCandidates] = useState<number[]>([])
+  
+  // Invite flow states
+  const [showInviteForm, setShowInviteForm] = useState(false)
+  const [interviewType, setInterviewType] = useState("Technical Interview")
+  const [customInterviewType, setCustomInterviewType] = useState("")
   const [isInviteSent, setIsInviteSent] = useState(false)
 
   const fetchJobs = async () => {
     setLoadingJobs(true);
     try {
-      let tokenData;
-      try {
-        const res = await authClient.token();
-        tokenData = res.data;
-      } catch (err) {
-        window.location.href = "/login";
-        return;
-      }
-      const token = tokenData?.token;
-      if (!token) {
-        window.location.href = "/login";
-        return;
-      }
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
-      const res = await fetch(`${backendUrl}/api/jobs`, {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
+      const res = await authFetch(`${backendUrl}/api/jobs`);
       if (res.ok) {
         setPostedJobs(await res.json());
       }
@@ -93,24 +84,12 @@ export default function PostJobPage() {
     setSuccess(false);
 
     try {
-      let tokenData;
-      try {
-        const res = await authClient.token();
-        tokenData = res.data;
-      } catch (err) {
-        throw new Error("Authentication failed. Please log in again.");
-      }
-      const token = tokenData?.token;
-
-      if (!token) throw new Error("Authentication failed. Please log in again.");
-
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
-      const res = await fetch(`${backendUrl}/api/jobs`, {
+      const res = await authFetch(`${backendUrl}/api/jobs`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           title,
@@ -151,11 +130,9 @@ export default function PostJobPage() {
     setIsInviteSent(false);
 
     try {
-      const token = localStorage.getItem("authToken");
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
-      const res = await fetch(`${backendUrl}/api/jobs/${job.id}/match`, {
+      const res = await authFetch(`${backendUrl}/api/jobs/${job.id}/match`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${token}` }
       });
       if (res.ok) {
         const matches = await res.json();
@@ -184,12 +161,39 @@ export default function PostJobPage() {
     }
   }
 
-  const sendInvites = () => {
-    if (selectedCandidates.length === 0) return;
+  const confirmSendInvites = async () => {
+    if (selectedCandidates.length === 0 || !matchingJob) return;
     setIsInviteSent(true);
+
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      
+      const finalInterviewType = interviewType === "Custom" ? customInterviewType : interviewType;
+
+      const res = await authFetch(`${backendUrl}/api/jobs/${matchingJob.id}/invite`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          studentIds: selectedCandidates,
+          interviewType: finalInterviewType
+        })
+      });
+
+      if (!res.ok) {
+        console.error("Failed to send invites:", await res.text());
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
     setTimeout(() => {
       setMatchingJob(null);
       setIsInviteSent(false);
+      setShowInviteForm(false);
+      setInterviewType("Technical Interview");
+      setCustomInterviewType("");
     }, 2000);
   }
 
@@ -377,135 +381,216 @@ export default function PostJobPage() {
       </Tabs>
 
       {/* AI Candidates Match Modal */}
+      {/* AI Candidates Match Modal */}
       <Dialog open={matchingJob !== null} onOpenChange={(open) => !open && setMatchingJob(null)}>
-        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-hidden flex flex-col p-0 border-4 border-black rounded-xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] bg-white">
-          <div className="p-6 pb-4 border-b-2 border-black flex items-center justify-between bg-gray-50">
-            <div>
-              <DialogTitle className="text-2xl font-kalam font-bold flex items-center gap-2">
-                Matched Candidates
-                {matchedCandidates.length > 0 && !isMatching && (
-                  <Badge variant="outline" className="border-2 border-black ml-2 font-sans bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                    {matchedCandidates.length} matches
-                  </Badge>
-                )}
-              </DialogTitle>
-              <DialogDescription className="text-muted-foreground mt-1">
-                AI-ranked candidates for {matchingJob?.title}
-              </DialogDescription>
-            </div>
-          </div>
-          
-          <div className="p-6 flex-1 overflow-y-auto bg-[url('https://www.transparenttextures.com/patterns/graphy.png')]">
-            {isMatching ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="animate-spin mb-4">
-                  <Sparkles className="size-12 text-blue-600" />
-                </div>
-                <h3 className="text-xl font-kalam font-bold mb-2">AI is analyzing profiles...</h3>
-                <p className="text-muted-foreground max-w-sm">Comparing your job requirements against our talent pool to find the perfect fit.</p>
-              </div>
-            ) : matchedCandidates.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-xl font-kalam font-bold text-gray-400">No matches found yet.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between mb-4 bg-white p-3 border-2 border-black rounded shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] sticky top-0 z-10">
-                  <div className="flex items-center gap-3">
-                    <Checkbox 
-                      checked={selectedCandidates.length === matchedCandidates.length} 
-                      onCheckedChange={toggleSelectAll} 
-                      className="border-2 border-black data-[state=checked]:bg-[#fcec6a] data-[state=checked]:text-black size-5 rounded-sm"
-                    />
-                    <span className="font-bold font-kalam">Select All</span>
-                    <span className="text-muted-foreground text-sm">({selectedCandidates.length} selected)</span>
-                  </div>
-                  <Button 
-                    onClick={sendInvites} 
-                    disabled={selectedCandidates.length === 0 || isInviteSent}
-                    className="bg-blue-600 hover:bg-blue-700 text-white border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-transform"
-                  >
-                    {isInviteSent ? (
-                      <>Invites Sent! 🚀</>
-                    ) : (
-                      <>
-                        <Mail className="size-4 mr-2" />
-                        Send Invite ({selectedCandidates.length})
-                      </>
+        <DialogContent className="sm:max-w-[900px] w-[95vw] max-h-[90vh] overflow-hidden flex flex-col p-0 border-4 border-black rounded-xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] bg-white">
+          {!showInviteForm ? (
+            <>
+              <div className="p-6 pb-4 border-b-2 border-black flex items-center justify-between bg-gray-50">
+                <div>
+                  <DialogTitle className="text-2xl font-kalam font-bold flex items-center gap-2">
+                    Matched Candidates
+                    {matchedCandidates.length > 0 && !isMatching && (
+                      <Badge variant="outline" className="border-2 border-black ml-2 font-sans bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                        {matchedCandidates.length} matches
+                      </Badge>
                     )}
-                  </Button>
+                  </DialogTitle>
+                  <DialogDescription className="text-muted-foreground mt-1">
+                    AI-ranked candidates for {matchingJob?.title}
+                  </DialogDescription>
                 </div>
-
-                {matchedCandidates.map((candidate, idx) => (
-                  <div key={candidate.id} className="flex gap-4 p-4 bg-white border-2 border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative transition-all">
-                    <div className="pt-1">
-                      <Checkbox 
-                        checked={selectedCandidates.includes(candidate.id)} 
-                        onCheckedChange={() => toggleCandidateSelection(candidate.id)} 
-                        className="border-2 border-black data-[state=checked]:bg-[#fcec6a] data-[state=checked]:text-black size-5 rounded-sm"
-                      />
+              </div>
+              
+              <div className="p-6 flex-1 overflow-y-auto bg-[url('https://www.transparenttextures.com/patterns/graphy.png')]">
+                {isMatching ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="animate-spin mb-4">
+                      <Sparkles className="size-12 text-blue-600" />
                     </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex items-center gap-3">
-                          <div className="size-10 rounded-full bg-[#fcec6a] border-2 border-black flex items-center justify-center font-bold text-xl font-kalam shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                            {candidate.name.charAt(0)}
+                    <h3 className="text-xl font-kalam font-bold mb-2">AI is analyzing profiles...</h3>
+                    <p className="text-muted-foreground max-w-sm">Comparing your job requirements against our talent pool to find the perfect fit.</p>
+                  </div>
+                ) : matchedCandidates.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-xl font-kalam font-bold text-gray-400">No matches found yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between mb-4 bg-white p-3 border-2 border-black rounded shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] sticky top-0 z-10">
+                      <div className="flex items-center gap-3">
+                        <Checkbox 
+                          checked={selectedCandidates.length === matchedCandidates.length} 
+                          onCheckedChange={toggleSelectAll} 
+                          className="border-2 border-black data-[state=checked]:bg-[#fcec6a] data-[state=checked]:text-black size-5 rounded-sm"
+                        />
+                        <span className="font-bold font-kalam">Select All</span>
+                        <span className="text-muted-foreground text-sm">({selectedCandidates.length} selected)</span>
+                      </div>
+                      <Button 
+                        onClick={() => setShowInviteForm(true)} 
+                        disabled={selectedCandidates.length === 0}
+                        className="bg-blue-600 hover:bg-blue-700 text-white border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-transform font-bold"
+                      >
+                        <Mail className="size-4 mr-2" />
+                        Continue to Invite ({selectedCandidates.length})
+                      </Button>
+                    </div>
+
+                    {matchedCandidates.map((candidate, idx) => (
+                      <div key={candidate.id} className="flex gap-4 p-5 bg-white border-2 border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative transition-all">
+                        <div className="pt-1">
+                          <Checkbox 
+                            checked={selectedCandidates.includes(candidate.id)} 
+                            onCheckedChange={() => toggleCandidateSelection(candidate.id)} 
+                            className="border-2 border-black data-[state=checked]:bg-[#fcec6a] data-[state=checked]:text-black size-5 rounded-sm"
+                          />
+                        </div>
+                        
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start mb-2">
+                            <div className="flex items-center gap-4">
+                              <div className="size-12 rounded-full bg-[#fcec6a] border-2 border-black flex items-center justify-center font-bold text-2xl font-kalam shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] shrink-0">
+                                {candidate.name.charAt(0)}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className="font-bold text-xl font-kalam leading-tight">{candidate.name}</h4>
+                                  {candidate.isTopMatch && (
+                                    <Badge className="bg-[#fcec6a] text-black border-2 border-black hover:bg-[#fcec6a] px-2 py-0.5 text-[10px] uppercase font-bold shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
+                                      Top Match
+                                    </Badge>
+                                  )}
+                                  <Badge className="bg-emerald-100 text-emerald-800 border border-black hover:bg-emerald-100 px-2 py-0.5 text-[10px] font-bold shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
+                                    🛡️ Verified by Royal College Placement Cell
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground truncate mt-0.5">
+                                  {candidate.degree || "Software Developer"} - {candidate.university || "Royal College of Engineering"}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="font-black text-2xl text-green-600 block leading-tight">{candidate.matchScore}%</span>
+                              <div className="w-20 h-2.5 bg-gray-200 border border-black rounded-full mt-1.5 overflow-hidden">
+                                <div className="bg-green-500 h-full" style={{ width: `${candidate.matchScore}%` }} />
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-bold text-lg font-kalam leading-tight">{candidate.name}</h4>
-                              {candidate.isTopMatch && (
-                                <Badge className="bg-[#fcec6a] text-black border-2 border-black hover:bg-[#fcec6a] px-2 py-0.5 text-[10px] uppercase font-bold shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
-                                  Top Match
+                          
+                          <div className="mt-4 text-sm italic text-gray-700 bg-gray-50 border-l-4 border-blue-400 p-3 pr-8 rounded-r relative leading-relaxed">
+                            &quot;{candidate.matchSummary}&quot;
+                            <ExternalLink className="size-3.5 absolute top-3.5 right-3 text-blue-500 cursor-pointer hover:text-blue-700 transition-colors" />
+                          </div>
+                          
+                          {candidate.skills && (
+                            <div className="mt-3 flex flex-wrap gap-1">
+                              {candidate.skills.split(',').slice(0, 5).map((skill: string, i: number) => (
+                                <Badge key={i} variant="outline" className="border-black/30 text-xs py-0 bg-white">
+                                  {skill.trim()}
                                 </Badge>
+                              ))}
+                              {candidate.skills.split(',').length > 5 && (
+                                <span className="text-xs text-muted-foreground pt-0.5 pl-1">+{candidate.skills.split(',').length - 5} more</span>
                               )}
                             </div>
-                            <p className="text-sm text-muted-foreground truncate">
-                              {candidate.degree || "Software Developer"} - {candidate.university || "University"}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <span className="font-black text-xl text-green-600 block leading-tight">{candidate.matchScore}%</span>
-                          <div className="w-16 h-2 bg-gray-200 border border-black rounded-full mt-1 overflow-hidden">
-                            <div className="bg-green-500 h-full" style={{ width: `${candidate.matchScore}%` }} />
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="mt-3 text-sm italic text-gray-700 bg-gray-50 border-l-4 border-blue-400 p-2 rounded-r flex gap-2">
-                        <span className="text-gray-400">"</span>
-                        {candidate.matchSummary}
-                        <span className="text-gray-400">"</span>
-                        <ExternalLink className="size-3 mt-0.5 ml-auto text-blue-500 cursor-pointer shrink-0" />
-                      </div>
-                      
-                      {candidate.skills && (
-                        <div className="mt-3 flex flex-wrap gap-1">
-                          {candidate.skills.split(',').slice(0, 5).map((skill: string, i: number) => (
-                            <Badge key={i} variant="outline" className="border-black/30 text-xs py-0 bg-white">
-                              {skill.trim()}
-                            </Badge>
-                          ))}
-                          {candidate.skills.split(',').length > 5 && (
-                            <span className="text-xs text-muted-foreground pt-0.5 pl-1">+{candidate.skills.split(',').length - 5} more</span>
                           )}
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
-            )}
-          </div>
-          
-          <div className="p-4 border-t-2 border-black flex justify-center bg-gray-50">
-            <Button variant="ghost" onClick={() => runAiMatching(matchingJob)} disabled={isMatching} className="font-kalam text-muted-foreground hover:text-black">
-              <Sparkles className="size-4 mr-2" />
-              Re-run AI Matching
-            </Button>
-          </div>
+              
+              <div className="p-4 border-t-2 border-black flex justify-center bg-gray-50">
+                <Button variant="ghost" onClick={() => runAiMatching(matchingJob)} disabled={isMatching} className="font-kalam text-muted-foreground hover:text-black">
+                  <Sparkles className="size-4 mr-2" />
+                  Re-run AI Matching
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col h-full bg-[url('https://www.transparenttextures.com/patterns/graphy.png')]">
+              <div className="p-6 pb-4 border-b-2 border-black bg-white">
+                <div className="flex items-center justify-between mb-1">
+                  <DialogTitle className="text-2xl font-kalam font-bold flex items-center gap-2">
+                    Send Interview Invites
+                  </DialogTitle>
+                </div>
+                <DialogDescription className="text-muted-foreground">
+                  Sending to <span className="font-bold text-black">{selectedCandidates.length} candidate{selectedCandidates.length !== 1 ? 's' : ''}</span>
+                </DialogDescription>
+              </div>
+              
+              <div className="p-6 flex-1 overflow-y-auto space-y-6 max-w-2xl mx-auto w-full">
+                <div className="flex items-center gap-4 p-4 bg-[#fcec6a]/20 border-2 border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                  <div className="bg-[#fcec6a] p-3 rounded-full border-2 border-black">
+                    <Mail className="size-6" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold font-kalam text-lg">{selectedCandidates.length} Candidates Selected</h4>
+                    <p className="text-sm text-muted-foreground">Each will receive a unique AI interview link via email.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3 bg-white p-5 border-2 border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                  <Label className="font-kalam font-bold text-lg">Interview Type</Label>
+                  <select 
+                    value={interviewType}
+                    onChange={(e) => setInterviewType(e.target.value)}
+                    className="flex h-10 w-full rounded-md border-2 border-black bg-white px-3 py-2 text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Technical Interview">Technical Interview</option>
+                    <option value="HR Interview">HR Interview</option>
+                    <option value="Behavioral Interview">Behavioral Interview</option>
+                    <option value="Custom">Custom...</option>
+                  </select>
+                  
+                  {interviewType === "Custom" && (
+                    <div className="pt-2 animate-in fade-in slide-in-from-top-2">
+                      <Input 
+                        placeholder="e.g. Final Cultural Fit Round" 
+                        value={customInterviewType}
+                        onChange={(e) => setCustomInterviewType(e.target.value)}
+                        className="border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                      />
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-2">A unique AI-powered interview link will be generated for each candidate.</p>
+                </div>
+
+                <div className="bg-white border-2 border-black rounded-lg p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="size-4 text-blue-500" />
+                    <span className="text-xs font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded uppercase tracking-wider">Email Preview</span>
+                  </div>
+                  <div className="text-sm leading-relaxed text-gray-700 bg-blue-50/50 p-4 rounded border border-blue-100">
+                    &quot;Hi <span className="bg-[#fcec6a]/50 px-1 font-semibold rounded">[Candidate Name]</span>, we'd like to invite you to a <span className="bg-blue-200/60 px-1 font-semibold rounded">{interviewType === "Custom" ? (customInterviewType || "[Custom Interview]") : interviewType}</span> for the <span className="bg-[#fcec6a]/50 px-1 font-semibold rounded">{matchingJob?.title}</span> position. Please click the link below to start your AI-powered interview at your convenience...&quot;
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t-2 border-black flex justify-between bg-white items-center">
+                <Button variant="ghost" onClick={() => setShowInviteForm(false)} className="font-kalam font-bold hover:bg-gray-100">
+                  Back
+                </Button>
+                <Button 
+                  onClick={confirmSendInvites} 
+                  disabled={isInviteSent || (interviewType === "Custom" && !customInterviewType.trim())}
+                  className="bg-blue-600 hover:bg-blue-700 text-white border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-transform font-bold min-w-[150px]"
+                >
+                  {isInviteSent ? (
+                    <>Invites Sent! 🚀</>
+                  ) : (
+                    <>
+                      <Mail className="size-4 mr-2" />
+                      Send Invites
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

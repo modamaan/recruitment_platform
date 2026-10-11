@@ -10,7 +10,7 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"student" | "recruiter">("student");
+  const [role, setRole] = useState<"student" | "recruiter" | "placement_cell">("student");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -52,7 +52,8 @@ export default function RegisterPage() {
       if (!res.ok) throw new Error("Failed to save profile to database");
 
       router.refresh();
-      router.push(`/dashboard/${role}`); 
+      const targetPath = role === "placement_cell" ? "/dashboard/placement-cell" : `/dashboard/${role}`;
+      router.push(targetPath); 
     } catch (err: any) {
       setError(err?.message || "An unexpected error occurred. Please try again.");
     } finally {
@@ -72,7 +73,7 @@ export default function RegisterPage() {
       />
       <div className="absolute left-8 md:left-16 top-0 bottom-0 w-[2px] bg-red-400/30 z-0 hidden sm:block"></div>
       
-      <div className="w-full max-w-md relative z-10">
+      <div className="w-full max-w-lg relative z-10">
         <Link href="/" className="inline-block mb-8">
           <div className="bg-[#fcec6a] text-black font-kalam font-bold text-xl px-4 py-1 border-2 border-black rounded-sm transform -rotate-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform">
             &larr; Back to start
@@ -84,7 +85,7 @@ export default function RegisterPage() {
             Create account
           </h2>
           <p className="font-mono text-sm text-gray-500 mb-8 uppercase tracking-widest border-b-2 border-dashed border-gray-200 pb-4">
-            Join the AI platform today
+            Join the Royal College AI Placement Platform
           </p>
 
           {error && (
@@ -95,21 +96,28 @@ export default function RegisterPage() {
 
           <form onSubmit={handleRegister} className="space-y-5">
             <div className="mb-6">
-              <label className="block font-kalam text-2xl mb-3">I am a...</label>
-              <div className="flex gap-4">
+              <label className="block font-kalam text-2xl mb-3">I am registering as...</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button 
                   type="button" 
                   onClick={() => setRole("student")}
-                  className={`flex-1 py-3 text-lg font-kalam font-bold rounded-sm border-2 border-black transition-all transform ${role === 'student' ? 'bg-[#fcec6a] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] -translate-y-1 rotate-1' : 'bg-white hover:bg-gray-50'}`}
+                  className={`py-2.5 px-2 text-base font-kalam font-bold rounded-sm border-2 border-black transition-all transform ${role === 'student' ? 'bg-[#fcec6a] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] -translate-y-1 rotate-1' : 'bg-white hover:bg-gray-50'}`}
                 >
-                  Student
+                  🎓 Student
                 </button>
                 <button 
                   type="button" 
                   onClick={() => setRole("recruiter")}
-                  className={`flex-1 py-3 text-lg font-kalam font-bold rounded-sm border-2 border-black transition-all transform ${role === 'recruiter' ? 'bg-[#fcec6a] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] -translate-y-1 -rotate-1' : 'bg-white hover:bg-gray-50'}`}
+                  className={`py-2.5 px-2 text-base font-kalam font-bold rounded-sm border-2 border-black transition-all transform ${role === 'recruiter' ? 'bg-[#fcec6a] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] -translate-y-1 -rotate-1' : 'bg-white hover:bg-gray-50'}`}
                 >
-                  Recruiter
+                  💼 Recruiter
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setRole("placement_cell")}
+                  className={`py-2.5 px-2 text-base font-kalam font-bold rounded-sm border-2 border-black transition-all transform ${role === 'placement_cell' ? 'bg-[#fcec6a] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] -translate-y-1 rotate-1' : 'bg-white hover:bg-gray-50'}`}
+                >
+                  🛡️ Placement Cell
                 </button>
               </div>
             </div>

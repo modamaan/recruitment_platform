@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { authClient } from "@/lib/auth/client";
+import { getAuthToken, authFetch } from "@/lib/auth/token";
 
 export default function RoleGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -14,16 +14,7 @@ export default function RoleGuard({ children }: { children: React.ReactNode }) {
 
     async function checkRole() {
       try {
-        let token = localStorage.getItem("authToken");
-        
-        // If no token in local storage, try to fetch it from auth client
-        if (!token) {
-          const { data: tokenData, error } = await authClient.token();
-          token = tokenData?.token as string;
-          if (token) {
-            localStorage.setItem("authToken", token);
-          }
-        }
+        const token = await getAuthToken();
 
         if (!token) {
           if (isMounted) router.push("/login");
@@ -31,20 +22,28 @@ export default function RoleGuard({ children }: { children: React.ReactNode }) {
         }
 
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
-        const res = await fetch(`${backendUrl}/api/me`, {
-          headers: { "Authorization": `Bearer ${token}` }
-        });
+        const res = await authFetch(`${backendUrl}/api/me`);
 
         if (res.ok) {
           const user = await res.json();
           
+          const getDashboardPath = (role: string) => {
+            if (role === "placement_cell") return "/dashboard/placement-cell";
+            return `/dashboard/${role}`;
+          };
+
           if (pathname.startsWith("/dashboard/student") && user.role !== "student") {
-            if (isMounted) router.push(`/dashboard/${user.role}`);
+            if (isMounted) router.push(getDashboardPath(user.role));
             return;
           }
           
           if (pathname.startsWith("/dashboard/recruiter") && user.role !== "recruiter") {
-            if (isMounted) router.push(`/dashboard/${user.role}`);
+            if (isMounted) router.push(getDashboardPath(user.role));
+            return;
+          }
+
+          if (pathname.startsWith("/dashboard/placement-cell") && user.role !== "placement_cell") {
+            if (isMounted) router.push(getDashboardPath(user.role));
             return;
           }
           

@@ -14,6 +14,13 @@ export const users = pgTable("users", {
   linkedin: text("linkedin"),
   github: text("github"),
   bio: text("bio"),
+  projects: text("projects"),
+  internships: text("internships"),
+  hackathons: text("hackathons"),
+  verificationStatus: text("verification_status").default("pending").notNull(), // 'pending', 'verified', 'rejected'
+  verifiedAt: timestamp("verified_at"),
+  verifiedBy: text("verified_by"),
+  rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -34,6 +41,16 @@ export const interviews = pgTable("interviews", {
   id: serial("id").primaryKey(),
   jobId: integer("job_id").references(() => jobs.id).notNull(),
   studentId: text("student_id").notNull(), // References neonUserId of the student
+  interviewType: text("interview_type").notNull().default('General Interview'),
+  stage: text("stage").default('briefing').notNull(), // 'briefing', 'mcq', 'technical', 'voice', 'completed'
+  mcqQuestions: jsonb("mcq_questions"),
+  mcqAnswers: jsonb("mcq_answers"),
+  mcqScore: integer("mcq_score").default(0),
+  technicalQuestions: jsonb("technical_questions"),
+  technicalAnswers: jsonb("technical_answers"),
+  technicalScore: integer("technical_score").default(0),
+  voiceScore: integer("voice_score").default(0),
+  reportData: jsonb("report_data"),
   transcript: jsonb("transcript"),
   feedback: text("feedback"),
   matchScore: integer("match_score"),

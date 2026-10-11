@@ -8,7 +8,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { AccessToken, AgentDispatchClient } from 'livekit-server-sdk';
 import { db } from './db';
 import { users, jobs, interviews } from './db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 const app = express();
 const port = process.env.PORT || 8000;
 
@@ -16,45 +16,23 @@ app.use(cors());
 app.use(express.json());
 
 import resumeRouter from './routes/resume';
-app.use('/api/resume', resumeRouter); 
+app.use('/api/resume', resumeRouter);
 
 
 
-// Set up the remote JWKS for Neon Auth
-// This URL verifies that the JWT was signed by your Neon Auth server
-const JWKS = createRemoteJWKSet(new URL(process.env.NEON_AUTH_JWKS_URL!));
-
-// Middleware to verify the Neon Auth JWT securely
-const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized: No token provided' });
-  }
-
-  const token = authHeader.split(' ')[1];
-  try {
-    const baseUrl = process.env.NEON_AUTH_BASE_URL || "";
-    let expectedIssuer = baseUrl;
-    try {
-      expectedIssuer = new URL(baseUrl).origin;
-    } catch (e) { }
-
-    const { payload } = await jwtVerify(token, JWKS, {
-      issuer: expectedIssuer,
-    });
-    // Attach the verified user ID to the request
-    (req as any).user = { id: payload.sub };
-    next();
-  } catch (error) {
-    console.error("JWT Verification failed:", error);
-    return res.status(401).json({ error: 'Unauthorized: Invalid token' });
-  }
-};
+import { requireAuth } from './middleware/auth';
 
 // --- API Routes ---
 
 import matchRouter from './routes/match';
+import recruiterDashboardRouter from './routes/recruiter-dashboard';
+import interviewsRouter from './routes/interviews';
+import placementCellRouter from './routes/placement-cell';
+
 app.use('/api/jobs', requireAuth, matchRouter);
+app.use('/api/recruiter', requireAuth, recruiterDashboardRouter);
+app.use('/api/placement-cell', requireAuth, placementCellRouter);
+app.use('/api/interviews', interviewsRouter); // Called by python agent, so no requireAuth for MVP
 
 // Public health check route
 app.get('/health', (req, res) => {
@@ -99,7 +77,8 @@ app.post('/api/users', requireAuth, async (req, res) => {
       neonUserId,
       name,
       email,
-      role
+      role,
+      verificationStatus: role === 'student' ? 'pending' : 'verified',
     }).returning();
 
     res.status(201).json(newUser[0]);
@@ -112,22 +91,37 @@ app.post('/api/users', requireAuth, async (req, res) => {
 // Protected route: Update current user's profile details
 app.put('/api/users/profile', requireAuth, async (req, res) => {
   const neonUserId = (req as any).user.id;
-  const { name, email, university, degree, gradYear, phone, skills, linkedin, github, bio } = req.body;
+  const { name, email, university, degree, gradYear, phone, skills, linkedin, github, bio, projects, internships, hackathons } = req.body;
 
   try {
+    const existing = await db.query.users.findFirst({
+      where: eq(users.neonUserId, neonUserId)
+    });
+
+    const updatePayload: any = {
+      name,
+      email,
+      university,
+      degree,
+      gradYear,
+      phone,
+      skills,
+      linkedin,
+      github,
+      bio,
+      projects,
+      internships,
+      hackathons,
+    };
+
+    // If student updates their skills/profile, reset to pending verification for placement cell review
+    if (existing?.role === 'student') {
+      updatePayload.verificationStatus = 'pending';
+      updatePayload.rejectionReason = null;
+    }
+
     const updatedUser = await db.update(users)
-      .set({
-        name,
-        email,
-        university,
-        degree,
-        gradYear,
-        phone,
-        skills,
-        linkedin,
-        github,
-        bio
-      })
+      .set(updatePayload)
       .where(eq(users.neonUserId, neonUserId))
       .returning();
 
@@ -206,14 +200,27 @@ app.post('/api/interview/token', requireAuth, async (req, res) => {
   }
 
   try {
-    // Generate the unique room name
-    const roomName = `interview-${interviewId}`;
-
-    // We fetch the student's name from our DB to label them in the room
     const user = await db.query.users.findFirst({
       where: eq(users.neonUserId, neonUserId)
     });
     const participantName = user?.name || `Student-${neonUserId.substring(0, 5)}`;
+
+    // Fetch the interview to get the job details and assessment results
+    let interviewRecord = null;
+    const parsedId = parseInt(interviewId, 10);
+    if (!isNaN(parsedId)) {
+      interviewRecord = await db.query.interviews.findFirst({
+        where: eq(interviews.id, parsedId)
+      });
+      if (!interviewRecord) {
+        interviewRecord = await db.query.interviews.findFirst({
+          where: and(eq(interviews.jobId, parsedId), eq(interviews.studentId, neonUserId))
+        });
+      }
+    }
+
+    const effectiveRoomId = interviewRecord ? interviewRecord.id : interviewId;
+    const roomName = `interview-${effectiveRoomId}`;
 
     const at = new AccessToken(
       process.env.LIVEKIT_API_KEY,
@@ -234,15 +241,52 @@ app.post('/api/interview/token', requireAuth, async (req, res) => {
 
     const token = await at.toJwt();
 
-    // Dispatch the AI Agent to the room programmatically
+    let jobMetadata = "";
+    if (interviewRecord) {
+      const jobRecord = await db.query.jobs.findFirst({
+        where: eq(jobs.id, interviewRecord.jobId)
+      });
+      if (jobRecord) {
+        // Extract Stage 1 mistakes for follow-up probe
+        const mcqAnswersList: any[] = (interviewRecord.mcqAnswers as any[]) || [];
+        const mcqMistakes = mcqAnswersList
+          .filter((a: any) => !a.isCorrect)
+          .map((a: any) => a.skillTarget || `Question ${a.questionId}`);
+
+        jobMetadata = JSON.stringify({
+          candidateName: participantName,
+          candidateUniversity: user?.university || "Royal College of Engineering",
+          candidateDegree: user?.degree || "B.E. Computer Science",
+          candidateGradYear: user?.gradYear || "2026",
+          verificationStatus: user?.verificationStatus || "pending",
+          verifiedBy: user?.verifiedBy || "Royal College Placement Cell",
+          candidateSkills: user?.skills || "Not specified",
+          candidateBio: user?.bio || "Not specified",
+          candidateProjects: user?.projects || "None listed in profile",
+          candidateInternships: user?.internships || "None listed in profile",
+          candidateHackathons: user?.hackathons || "None listed in profile",
+          mcqScore: interviewRecord.mcqScore || 0,
+          mcqMistakes: mcqMistakes,
+          technicalScore: interviewRecord.technicalScore || 0,
+          technicalAnswers: interviewRecord.technicalAnswers || [],
+          jobTitle: jobRecord.title,
+          jobDescription: jobRecord.description,
+          jobRequirements: jobRecord.requirements
+        });
+      }
+    }
+
+    // Dispatch the AI Agent to the room programmatically with contextual metadata
     try {
       const dispatchClient = new AgentDispatchClient(
         process.env.LIVEKIT_URL!,
         process.env.LIVEKIT_API_KEY!,
         process.env.LIVEKIT_API_SECRET!
       );
-      await dispatchClient.createDispatch(roomName, 'recruiter-agent');
-      console.log(`Dispatched recruiter-agent to room ${roomName}`);
+      await dispatchClient.createDispatch(roomName, 'recruiter-agent', {
+        metadata: jobMetadata
+      });
+      console.log(`Dispatched recruiter-agent to room ${roomName} with job metadata`);
     } catch (dispatchError) {
       console.log(`Note: Agent dispatch failed or agent already exists in room: ${dispatchError}`);
     }

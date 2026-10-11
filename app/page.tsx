@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PlacedStudentsSection } from "@/components/home/placed-students-section";
 
 export default function Home() {
   return (
@@ -25,6 +26,7 @@ export default function Home() {
         <nav className="flex items-center gap-8 font-kalam text-xl">
           <Link href="#problem" className="hover:underline decoration-2 underline-offset-4 hidden sm:block">The Problem</Link>
           <Link href="#product" className="hover:underline decoration-2 underline-offset-4 hidden sm:block">The Product</Link>
+          <Link href="#placements" className="hover:underline decoration-2 underline-offset-4 hidden sm:block">Placed Students 🎓</Link>
           <Link href="/login" className="bg-black text-white px-5 py-1.5 rounded-sm border-2 border-black hover:bg-yellow-300 hover:text-black transition-colors transform rotate-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
             Log in
           </Link>
@@ -260,6 +262,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Hall of Fame / Placed Students Section */}
+      <PlacedStudentsSection />
 
       {/* Footer */}
       <footer className="relative z-10 border-t-2 border-black bg-[#f6f5ef] py-16 text-center mt-12">

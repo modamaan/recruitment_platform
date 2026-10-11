@@ -4,17 +4,19 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "nodemon src/index.ts",
-    "agent": "tsx --tsconfig tsconfig.agent.json src/agent.ts dev",
+    "agent": ".\\venv\\Scripts\\python.exe agent.py start",
     "start": "concurrently --names \"API,AGENT\" --prefix-colors \"cyan,magenta\" \"npm run dev\" \"npm run agent\"",
     "build": "tsc",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.91",
     "@livekit/agents": "^1.9.1",
     "@livekit/agents-plugin-openai": "^1.9.1",
     "@livekit/agents-plugin-silero": "^1.9.1",
     "@neondatabase/serverless": "^1.2.0",
+    "ai": "^7.0.137",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.45.4",
@@ -24,7 +26,8 @@
     "multer": "^2.4.0",
     "nodemon": "^3.1.14",
     "openai": "^7.31.0",
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^1.1.1",
+    "resend": "^6.32.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

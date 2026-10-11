@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { UploadCloud, CheckCircle2, FileText, Loader2, X, Sparkles } from "lucide-react"
+import { UploadCloud, CheckCircle2, FileText, Loader2, X, Sparkles, ShieldCheck, AlertTriangle, Clock, Building2 } from "lucide-react"
+import { authFetch } from "@/lib/auth/token"
 
 export default function StudentProfilePage() {
   const [isUploading, setIsUploading] = useState(false);
@@ -23,8 +24,16 @@ export default function StudentProfilePage() {
     skills: "",
     linkedin: "",
     github: "",
-    bio: ""
+    bio: "",
+    projects: "",
+    internships: "",
+    hackathons: ""
   });
+
+  const [verificationStatus, setVerificationStatus] = useState<"pending" | "verified" | "rejected">("pending");
+  const [verifiedAt, setVerifiedAt] = useState<string | null>(null);
+  const [verifiedBy, setVerifiedBy] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState<string | null>(null);
 
   const [fillStatus, setFillStatus] = useState<string | null>(null);
 
@@ -32,15 +41,14 @@ export default function StudentProfilePage() {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const token = localStorage.getItem("authToken");
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
-        const res = await fetch(`${backendUrl}/api/me`, {
-          headers: { 
-            ...(token && { Authorization: `Bearer ${token}` })
-          }
-        });
+        const res = await authFetch(`${backendUrl}/api/me`);
         if (res.ok) {
           const data = await res.json();
+          setVerificationStatus(data.verificationStatus || "pending");
+          setVerifiedAt(data.verifiedAt || null);
+          setVerifiedBy(data.verifiedBy || null);
+          setRejectionReason(data.rejectionReason || null);
           setFormData({
             name: data.name || "",
             email: data.email || "",
@@ -51,7 +59,10 @@ export default function StudentProfilePage() {
             skills: data.skills || "",
             linkedin: data.linkedin || "",
             github: data.github || "",
-            bio: data.bio || ""
+            bio: data.bio || "",
+            projects: data.projects || "",
+            internships: data.internships || "",
+            hackathons: data.hackathons || ""
           });
         }
       } catch (err) {
@@ -70,19 +81,20 @@ export default function StudentProfilePage() {
     setIsSaving(true);
     setFillStatus(null);
     try {
-      const token = localStorage.getItem("authToken");
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
-      const response = await fetch(`${backendUrl}/api/users/profile`, {
+      const response = await authFetch(`${backendUrl}/api/users/profile`, {
         method: "PUT",
         headers: {
-          "Content-Type": "application/json",
-          ...(token && { Authorization: `Bearer ${token}` })
+          "Content-Type": "application/json"
         },
         body: JSON.stringify(formData)
       });
 
       if (response.ok) {
-        setFillStatus("Successfully saved profile!");
+        const savedData = await response.json();
+        setVerificationStatus(savedData.verificationStatus || "pending");
+        setRejectionReason(null);
+        setFillStatus("Profile saved & submitted to Royal College Placement Cell for verification!");
       } else {
         const errorData = await response.json();
         setFillStatus(`Error: ${errorData.error || "Failed to save changes"}`);
@@ -104,14 +116,10 @@ export default function StudentProfilePage() {
       payload.append("resume", file);
 
       try {
-        const token = localStorage.getItem("authToken");
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
-        const response = await fetch(`${backendUrl}/api/resume/parse`, {
+        const response = await authFetch(`${backendUrl}/api/resume/parse`, {
           method: "POST",
-          body: payload,
-          headers: {
-            ...(token && { Authorization: `Bearer ${token}` })
-          }
+          body: payload
         });
 
         if (response.ok) {
@@ -128,7 +136,10 @@ export default function StudentProfilePage() {
             skills: parsedData.skills || prev.skills,
             linkedin: parsedData.linkedin || prev.linkedin,
             github: parsedData.github || prev.github,
-            bio: parsedData.bio || prev.bio
+            bio: parsedData.bio || prev.bio,
+            projects: parsedData.projects || prev.projects,
+            internships: parsedData.internships || prev.internships,
+            hackathons: parsedData.hackathons || prev.hackathons
           }));
           setUploadedFile(file);
           setFillStatus("Successfully auto-filled profile from resume! (Don't forget to save)");
@@ -162,10 +173,92 @@ export default function StudentProfilePage() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">My Profile</h1>
-        <p className="text-muted-foreground">Manage your personal information and resume.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-3xl font-bold tracking-tight">My Profile</h1>
+            {/* Status Pill */}
+            {verificationStatus === "verified" && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold font-mono bg-emerald-100 text-emerald-800 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <ShieldCheck className="size-3.5 text-emerald-600" />
+                🛡️ Verified by Royal College Placement Cell
+              </span>
+            )}
+            {verificationStatus === "pending" && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold font-mono bg-[#fcec6a] text-black border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <Clock className="size-3.5 text-black" />
+                ⏳ Pending Placement Cell Verification
+              </span>
+            )}
+            {verificationStatus === "rejected" && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold font-mono bg-red-100 text-red-700 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <AlertTriangle className="size-3.5 text-red-600" />
+                ⚠️ Action Required: Changes Requested by Placement Cell
+              </span>
+            )}
+          </div>
+          <p className="text-muted-foreground">Manage your personal information, skills, and resume.</p>
+        </div>
       </div>
+
+      {/* Placement Cell Drive Clearance Informational Banners */}
+      {verificationStatus === "pending" && (
+        <div className="bg-[#fff9d2] border-2 border-black p-4 rounded-md shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-[#fcec6a] border-2 border-black rounded-full shrink-0 mt-0.5">
+              <Building2 className="size-5 text-black" />
+            </div>
+            <div className="flex-1 text-sm">
+              <h3 className="font-kalam font-bold text-lg text-black mb-0.5">
+                🏫 Drive Clearance Model: Verification In Progress
+              </h3>
+              <p className="text-gray-800 leading-relaxed font-sans">
+                Your professional details are awaiting review by an administrative officer at <strong>Royal College of Engineering</strong>. 
+                <span className="font-bold text-black ml-1">You can freely use the platform to practice mock AI voice interviews</span>, but your name and profile are withheld from recruiter campus drives until verified to prevent inflated skill claims.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {verificationStatus === "verified" && (
+        <div className="bg-emerald-50 border-2 border-black p-4 rounded-md shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-emerald-300 border-2 border-black rounded-full shrink-0 mt-0.5">
+              <ShieldCheck className="size-5 text-emerald-900" />
+            </div>
+            <div className="flex-1 text-sm">
+              <h3 className="font-kalam font-bold text-lg text-emerald-950 mb-0.5">
+                🛡️ Campus Drive Clearance Granted
+              </h3>
+              <p className="text-emerald-900 leading-relaxed font-sans">
+                Verified by <strong>{verifiedBy || "Royal College Placement Cell"}</strong>. Your profile is officially certified and actively visible to visiting corporate recruiters for AI matchmaking and direct interview invitations.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {verificationStatus === "rejected" && (
+        <div className="bg-red-50 border-2 border-black p-4 rounded-md shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-red-200 border-2 border-black rounded-full shrink-0 mt-0.5">
+              <AlertTriangle className="size-5 text-red-800" />
+            </div>
+            <div className="flex-1 text-sm">
+              <h3 className="font-kalam font-bold text-lg text-red-950 mb-0.5">
+                ⚠️ Placement Cell Requested Revisions
+              </h3>
+              <p className="text-red-900 font-bold mb-1">
+                Officer Feedback: &quot;{rejectionReason || "Please provide authentic proof or links for the skills listed."}&quot;
+              </p>
+              <p className="text-gray-700 text-xs">
+                Please edit your skills or project descriptions below and click &quot;Save Changes&quot; to re-submit your profile for clearance.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-6 md:grid-cols-[2fr_1fr]">
         {/* Main Details Form */}
@@ -230,6 +323,21 @@ export default function StudentProfilePage() {
             <div className="space-y-2">
               <Label htmlFor="bio">Professional Summary</Label>
               <Textarea id="bio" placeholder="Tell us about your career goals and what makes you unique..." className="min-h-[100px]" value={formData.bio} onChange={handleInputChange} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="projects">Projects</Label>
+              <Textarea id="projects" placeholder="Describe your technical projects, including technologies used and your impact..." className="min-h-[100px]" value={formData.projects} onChange={handleInputChange} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="internships">Internships & Experience</Label>
+              <Textarea id="internships" placeholder="List your internships, past roles, and key responsibilities..." className="min-h-[100px]" value={formData.internships} onChange={handleInputChange} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="hackathons">Hackathons & Achievements</Label>
+              <Textarea id="hackathons" placeholder="Mention hackathons won, competitive programming profiles, or other achievements..." className="min-h-[100px]" value={formData.hackathons} onChange={handleInputChange} />
             </div>
 
             <Button onClick={saveProfile} disabled={isSaving}>
